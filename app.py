@@ -3,6 +3,7 @@
 Paste a B站/YouTube video link → transcript + structured mind map + personal knowledge base.
 """
 
+import json
 import os
 import streamlit as st
 from src.video_fetcher import fetch_transcript
@@ -259,26 +260,67 @@ def _escape_mermaid(text: str) -> str:
     return text.replace('"', "'").replace("(", "（").replace(")", "）").replace("[", "【").replace("]", "】")
 
 def build_export_report(debate_data: dict, messages: list[dict], transcript: str) -> str:
-    qv = debate_data.get("quick_view", {})
-    lines = [
-        f"# 辩论分析报告", "", f"## 辩题", f"{debate_data.get('topic', '未知')}", "",
-        f"## 一句话总结", f"{qv.get('one_sentence_summary', '')}", "",
-        f"## 正方 · {debate_data.get('affirmative_side', '')}",
-    ]
-    for p in qv.get("affirmative_top3", []):
-        lines.append(f"- {p}")
-    lines.append("")
-    lines.append(f"## 反方 · {debate_data.get('negative_side', '')}")
-    for p in qv.get("negative_top3", []):
-        lines.append(f"- {p}")
-    lines.extend(["", f"## 最激烈交锋", qv.get("hottest_clash", ""), "", f"## 关键未回应问题", qv.get("key_unresolved", ""), "", f"## 关键词", " | ".join(qv.get("keywords", [])), "", "---", f"## 追问记录"])
-    for m in messages:
-        role = "AI" if m["role"] == "assistant" else "用户"
-        lines.append(f"**{role}**：{m['content']}")
-        lines.append("")
-    lines.append("---")
-    lines.append(f"## 辩论逐字稿")
-    lines.append(transcript[:5000] + ("..." if len(transcript) > 5000 else ""))
+    qv = debate_data.get("quick_view") or {}
+    lines = [f"# 辩论分析报告", "", f"## 辩题", f"{debate_data.get('topic', '未知')}"]
+
+    # ── Quick View ──
+    lines.extend(["", "## 速览", "",
+        f"**一句话总结**：{qv.get('one_sentence_summary', '（未生成）')}",
+        f"**正方立场**：{debate_data.get('affirmative_side', '')}",
+        f"**反方立场**：{debate_data.get('negative_side', '')}",
+        "", "### 正方 Top 3 论点"])
+    for i, p in enumerate(qv.get("affirmative_top3", []), 1):
+        lines.append(f"{i}. {p}")
+    lines.extend(["", "### 反方 Top 3 论点"])
+    for i, p in enumerate(qv.get("negative_top3", []), 1):
+        lines.append(f"{i}. {p}")
+    lines.extend(["", f"**🔥 最激烈交锋**：{qv.get('hottest_clash') or '（未生成）'}",
+        f"**⚠️ 关键未回应问题**：{qv.get('key_unresolved') or '（未生成）'}",
+        f"**🏷 关键词**：{' | '.join(qv.get('keywords', []))}"])
+
+    # ── Rounds ──
+    rounds = debate_data.get("rounds", [])
+    if rounds:
+        lines.extend(["", "---", "", "## 论点攻防链（逐回合）", ""])
+        for r in rounds:
+            lines.append(f"### {r.get('round_name', '')} — {r.get('side', '')} {r.get('speaker', '')}")
+            lines.append(f"> {r.get('content_summary', '')}")
+            for c in r.get("claims", []):
+                rebut = f" ↳ 反驳 {c.get('rebuts_claim_id')}" if c.get("rebuts_claim_id") else ""
+                status = " ✅已回应" if c.get("responded") else " ⚠️未回应"
+                lines.append(f"- **{c.get('content', '')}**{rebut}{status}")
+                if c.get("evidence"):
+                    lines.append(f"  证据：{c['evidence']}")
+                if c.get("response_summary"):
+                    lines.append(f"  回应：{c['response_summary']}")
+            lines.append("")
+
+    # ── Unresolved Issues ──
+    unresolved = debate_data.get("unresolved_issues", [])
+    if unresolved:
+        lines.extend(["", "## 未解决的问题", ""])
+        for u in unresolved:
+            lines.append(f"- [{u.get('importance', '中')}] {u.get('issue', '')}（提出方：{u.get('raised_by', '')}）")
+
+    # ── Factual Claims ──
+    factual = debate_data.get("factual_claims", [])
+    if factual:
+        lines.extend(["", "## 事实性主张", ""])
+        for f in factual:
+            evidence = f" — 证据：{f.get('evidence_detail')}" if f.get("has_evidence") else " — 无证据"
+            lines.append(f"- {f.get('claim', '')}（{f.get('speaker', '')}）{evidence}")
+
+    # ── Q&A ──
+    qa_msgs = [m for m in messages if m["role"] != "assistant" or not m["content"].startswith("这场辩论我已经分析完了")]
+    if qa_msgs:
+        lines.extend(["", "---", "", "## 追问记录", ""])
+        for m in qa_msgs:
+            role = "AI" if m["role"] == "assistant" else "用户"
+            lines.append(f"**{role}**：{m['content']}")
+            lines.append("")
+
+    # ── Transcript ──
+    lines.extend(["", "---", "", "## 辩论逐字稿", "", transcript])
     return "\n".join(lines)
 
 # ── Main UI ─────────────────────────────────────────────────────────────
@@ -461,10 +503,17 @@ if st.session_state.processing_done and st.session_state.debate_data:
         with col_m2:
             report = build_export_report(debate_data, st.session_state.messages, raw_text)
             st.download_button(
-                "📥 加入知识库（导出报告）",
+                "📥 导出报告（Markdown）",
                 data=report,
                 file_name=f"辩论分析_{debate_data.get('topic', 'report')}.md",
                 mime="text/markdown",
+                use_container_width=True,
+            )
+            st.download_button(
+                "📋 导出原始 JSON",
+                data=json.dumps(debate_data, ensure_ascii=False, indent=2),
+                file_name=f"辩论分析_{debate_data.get('topic', 'json')}.json",
+                mime="application/json",
                 use_container_width=True,
             )
 

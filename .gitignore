@@ -1,0 +1,8 @@
+data/cookies/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+data/eval/*.srt
+data/eval/*_raw.json
+data/eval/*_clean*.txt

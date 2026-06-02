@@ -61,7 +61,7 @@ def _single_pass_compress(
         user_message=transcript,
         api_key=api_key,
         model=model,
-        max_tokens=4096,
+        max_tokens=8192,
         base_url=base_url,
     )
     debate_data = _parse_json_response(raw_output)
@@ -104,15 +104,23 @@ def _chunked_compress(
     )
 
     for i, chunk in enumerate(chunks):
-        raw = call_llm(
-            system=chunk_system,
-            user_message=chunk,
-            api_key=api_key,
-            model=model,
-            max_tokens=4096,
-            base_url=base_url,
-        )
-        data = _parse_json_response(raw)
+        for attempt in range(2):
+            try:
+                raw = call_llm(
+                    system=chunk_system,
+                    user_message=chunk,
+                    api_key=api_key,
+                    model=model,
+                    max_tokens=8192,
+                    base_url=base_url,
+                )
+                data = _parse_json_response(raw)
+                break
+            except (ValueError, json.JSONDecodeError) as e:
+                if attempt == 0:
+                    continue
+                print(f"⚠️ Chunk {i+1}/{len(chunks)} JSON 解析失败（已重试）: {e}")
+                data = {}
         all_rounds.extend(data.get("rounds", []))
         all_unresolved.extend(data.get("unresolved_issues", []))
         all_factual.extend(data.get("factual_claims", []))
@@ -194,7 +202,7 @@ def _parse_json_response(text: str) -> dict:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            return _fallback_parse(text)
+            raise ValueError(f"LLM 返回 JSON 无法解析。原始输出前 300 字符: {text[:300]}")
 
 
 def _fallback_parse(text: str) -> dict:

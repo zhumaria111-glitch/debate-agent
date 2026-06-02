@@ -161,21 +161,21 @@ BUILT_IN_VIDEOS = [
         "url": "https://www.bilibili.com/video/BV1uY4y1m7hb",
         "bvid": "BV1uY4y1m7hb",
         "type": "政策辩",
-        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_02.txt"),
+        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_02_cleaned.txt"),
     },
     {
         "title": "网络暴力的根源是恶意还是愚蠢",
         "url": "https://www.bilibili.com/video/BV1N6wLeUEnN",
         "bvid": "BV1N6wLeUEnN",
         "type": "事实辩",
-        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_03.txt"),
+        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_03_cleaned.txt"),
     },
     {
         "title": "脱口秀还是辩论更能回应世界",
         "url": "https://www.bilibili.com/video/BV1uo4y1f7Ba",
         "bvid": "BV1uo4y1f7Ba",
         "type": "哲理辩",
-        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_04.txt"),
+        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_04_cleaned.txt"),
     },
 ]
 

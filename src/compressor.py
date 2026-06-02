@@ -136,7 +136,14 @@ def _chunked_compress(
 未解决问题：
 {json.dumps(all_unresolved, ensure_ascii=False)}
 
-请基于以上信息，生成辩论的 quick_view（一句话总结、双方top3论点、最激烈交锋点、关键未回应问题、5个关键词）。只输出 quick_view JSON：
+请基于以上信息生成 quick_view。必须遵守以下规则：
+- one_sentence_summary：一句话总结全场（不超过80字），禁止为空
+- affirmative_top3：正方最重要的3个论点，每条15-30字，必须恰好3条，禁止返回 []
+- negative_top3：反方最重要的3个论点，每条15-30字，必须恰好3条，禁止返回 []
+- hottest_clash：双方交锋最激烈的一个议题（20字以内），禁止为空字符串
+- key_unresolved：全场最关键的一个未被回应的问题（20字以内），禁止为空字符串
+- keywords：5个关键词
+只输出 quick_view JSON：
 ```json
 {{
   "topic": "...",
@@ -203,23 +210,3 @@ def _parse_json_response(text: str) -> dict:
             return json.loads(text)
         except json.JSONDecodeError:
             raise ValueError(f"LLM 返回 JSON 无法解析。原始输出前 300 字符: {text[:300]}")
-
-
-def _fallback_parse(text: str) -> dict:
-    """Minimal fallback when JSON parsing fails entirely."""
-    return {
-        "topic": "解析失败 — 请检查辩论稿格式是否完整",
-        "affirmative_side": "",
-        "negative_side": "",
-        "quick_view": {
-            "one_sentence_summary": "AI 未能成功解析辩论结构。可能原因：文字稿格式不清晰、缺少发言人标注、或内容不是辩论形式。建议检查输入文本后重试。",
-            "affirmative_top3": [],
-            "negative_top3": [],
-            "hottest_clash": "",
-            "key_unresolved": "",
-            "keywords": [],
-        },
-        "rounds": [],
-        "unresolved_issues": [],
-        "factual_claims": [],
-    }

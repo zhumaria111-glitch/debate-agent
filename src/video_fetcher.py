@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 import requests
@@ -71,7 +72,13 @@ COOKIE_FILE = Path(__file__).resolve().parent.parent / "data" / "cookies" / "bil
 
 
 def _load_bilibili_cookies() -> str:
-    """Load Bilibili cookies from Netscape-format file, return Cookie header value."""
+    """Load Bilibili cookies from env var or Netscape-format file."""
+    # 1. Environment variable (for deployment)
+    env_cookie = os.environ.get("BILIBILI_COOKIE", "")
+    if env_cookie:
+        return env_cookie
+
+    # 2. Cookie file (for local dev)
     if not COOKIE_FILE.exists():
         return ""
     cookies = {}

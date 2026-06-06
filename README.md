@@ -1,2 +1,13 @@
-# debate-agent
-DebateLens is an AI-powered tool that turns Bilibili debate videos into structured argument breakdowns. Built with RAG, it retrieves precise context from the knowledge base to answer your questions about any debate — helping competitive debaters learn faster and review smarter.
+---
+title: 辩析 · Debate Lens
+emoji: 🎤
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+# 辩析 · Debate Lens
+
+AI-powered Bilibili debate analysis. Paste a video link → structured argument breakdown + RAG knowledge base for cross-debate comparison.

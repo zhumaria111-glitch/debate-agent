@@ -10,11 +10,21 @@ from src.video_fetcher import fetch_transcript
 from src.transcript_cleaner import clean_transcript
 from src.compressor import compress_transcript
 from src.agent import run_agent_turn, generate_welcome_message, get_suggestions
-# Lazy-import KnowledgeBase so the main analysis flow works even if ChromaDB
-# dependencies (opentelemetry/protobuf) are incompatible with the Python version.
+# Lazy-import KnowledgeBase, fixing protobuf compatibility if needed (for Streamlit Cloud Python 3.14).
 def _get_kb():
-    from src.knowledge_base import KnowledgeBase
-    return KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
+    try:
+        from src.knowledge_base import KnowledgeBase
+        return KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
+    except Exception:
+        import subprocess, sys
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", "--upgrade",
+            "protobuf>=5.27.0", "opentelemetry-proto>=1.28.0",
+            "opentelemetry-api>=1.28.0", "opentelemetry-sdk>=1.28.0",
+            "opentelemetry-exporter-otlp-proto-grpc>=1.28.0", "grpcio>=1.64.0",
+        ])
+        from src.knowledge_base import KnowledgeBase
+        return KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
 
 # Resolve paths relative to this file so Streamlit works regardless of CWD
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -18,6 +18,7 @@ class QuickView:
 class Claim:
     id: str
     content: str
+    side: str = ""  # 正方/反方 — 提出该论点的辩方
     evidence: str = ""
     rebuts_claim_id: Optional[str] = None
     responded: bool = False

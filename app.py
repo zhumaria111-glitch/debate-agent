@@ -1,12 +1,13 @@
 """Debate Agent — AI-powered debate analysis.
 
-Paste a B站/YouTube video link → transcript + structured mind map + personal knowledge base.
+Paste a B站 video link → transcript + structured mind map + personal knowledge base.
 """
 
 import json
 import os
 import streamlit as st
 from src.video_fetcher import fetch_transcript
+from src.transcript_cleaner import clean_transcript
 from src.compressor import compress_transcript
 from src.agent import run_agent_turn, generate_welcome_message, get_suggestions
 
@@ -49,6 +50,68 @@ st.markdown("""
         aspect-ratio: 16/10;
         object-fit: cover;
         background: #f5f5f5;
+    }
+    .video-card .cover-placeholder {
+        width: 100%;
+        aspect-ratio: 16/10;
+        background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #ccc;
+        text-align: center;
+        padding: 24px;
+    }
+    .video-card .cover-placeholder .ph-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+        opacity: 0.6;
+    }
+    .video-card .cover-placeholder .ph-title {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: #ddd;
+    }
+    .video-card .cover-placeholder .ph-tag {
+        margin-top: 8px;
+        font-size: 10px;
+        color: #888;
+        border: 1px solid #555;
+        padding: 2px 8px;
+        border-radius: 3px;
+    }
+    .video-card .cover-sample {
+        width: 100%;
+        aspect-ratio: 16/10;
+        background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #ccc;
+        text-align: center;
+        padding: 24px;
+    }
+    .video-card .cover-sample .ph-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+        opacity: 0.6;
+    }
+    .video-card .cover-sample .ph-title {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: #ddd;
+    }
+    .video-card .cover-sample .ph-tag {
+        margin-top: 8px;
+        font-size: 10px;
+        color: #888;
+        border: 1px solid #555;
+        padding: 2px 8px;
+        border-radius: 3px;
     }
     .video-card .body {
         padding: 10px 12px 14px 12px;
@@ -144,15 +207,15 @@ for key, val in defaults.items():
 BUILT_IN_VIDEOS = [
     {
         "title": "是否应该全面推行四天工作制",
-        "url": "https://www.bilibili.com/video/BV1uT421k7Fb",
-        "bvid": "BV1uT421k7Fb",
+        "url": "",
+        "bvid": "",
         "type": "政策辩",
         "transcript_file": os.path.join(ROOT_DIR, "data", "sample_debate.txt"),
     },
     {
         "title": "爱情是/不是人类的必需品",
-        "url": "https://www.bilibili.com/video/BV1QdwCe3EoZ",
-        "bvid": "BV1QdwCe3EoZ",
+        "url": "https://www.bilibili.com/video/BV1Zk4y1L7Z7",
+        "bvid": "BV1Zk4y1L7Z7",
         "type": "价值辩",
         "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_01.txt"),
     },
@@ -177,25 +240,58 @@ BUILT_IN_VIDEOS = [
         "type": "哲理辩",
         "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_04_cleaned.txt"),
     },
+    {
+        "title": "技术是否中立",
+        "url": "https://www.bilibili.com/video/BV1rM4y1D7e6",
+        "bvid": "BV1rM4y1D7e6",
+        "type": "哲理辩",
+        "transcript_file": os.path.join(ROOT_DIR, "data", "eval", "debate_05_cleaned.txt"),
+    },
 ]
 
 
-def get_video_cover(bvid: str) -> str:
-    """Try to get B站 video cover, fall back to placeholder."""
+@st.cache_data(ttl=86400)
+def get_video_cover_b64(bvid: str) -> str:
+    """Download B站 cover image server-side, return base64 data URI.
+
+    Downloads once per 24h per video. Serves as embedded data URI so the
+    browser never makes a cross-origin request to Bilibili's CDN — no
+    Referer leakage and no hotlinking.
+    """
+    if not bvid:
+        return ""
+
+    import base64
     import requests
     try:
-        url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
-        headers = {
+        # Step 1: get cover URL from Bilibili's public API
+        api_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
+        api_headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://www.bilibili.com/",
         }
-        resp = requests.get(url, headers=headers, timeout=8)
+        resp = requests.get(api_url, headers=api_headers, timeout=8)
         data = resp.json()
-        if data["code"] == 0:
-            return data["data"]["pic"]
+        if data["code"] != 0:
+            return ""
+        pic_url = data["data"]["pic"]
+
+        # Step 2: download the image itself (upgrade http → https)
+        pic_url = pic_url.replace("http://", "https://", 1)
+        img_resp = requests.get(
+            pic_url,
+            headers={"User-Agent": api_headers["User-Agent"]},
+            timeout=10,
+        )
+        if img_resp.status_code != 200:
+            return ""
+
+        # Step 3: encode as data URI so the browser makes zero external requests
+        content_type = img_resp.headers.get("content-type", "image/jpeg")
+        b64 = base64.b64encode(img_resp.content).decode()
+        return f"data:{content_type};base64,{b64}"
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 # ── Model selector (sidebar) ─────────────────────────────────────────────
@@ -333,7 +429,7 @@ st.markdown("""
         一场一小时辩论赛，三分钟看懂论证骨架
     </p>
     <p style="font-size: 14px; color: #bbb;">
-        粘贴 B站 / YouTube 视频链接即可
+        粘贴 B站视频链接即可
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -376,7 +472,7 @@ if not st.session_state.processing_done:
     with col_url:
         video_url = st.text_input(
             "视频链接",
-            placeholder="https://www.bilibili.com/video/BV... 或 https://youtube.com/watch?v=...",
+            placeholder="https://www.bilibili.com/video/BV...",
             key="video_url_input",
             label_visibility="collapsed",
         )
@@ -405,24 +501,47 @@ if not st.session_state.processing_done:
             st.error(f"⚠️ 字幕获取失败：{result.error}")
             st.info("💡 该视频可能未开启 AI 字幕。B站视频需开启 AI 字幕才能自动提取文字稿。")
         else:
+            with st.spinner("🧹 正在清洗字幕（加标点、标发言人、去噪声）..."):
+                cleaned_text = clean_transcript(
+                    result.full_text,
+                    API_KEY,
+                    model,
+                    base_url=BASE_URL,
+                )
             with st.spinner("🧠 正在分析论证结构..."):
-                process_transcript(result.full_text, result.title)
+                process_transcript(cleaned_text, result.title)
 
     # --- Built-in video gallery ---
     st.markdown("### 📺 热门辩论分析")
-    st.caption("以下视频已开启 AI 字幕，可直接分析")
+    st.caption("以下视频可直接进行分析")
 
     num_cols = min(3, len(BUILT_IN_VIDEOS))
     for i, vid in enumerate(BUILT_IN_VIDEOS):
         col_idx = i % num_cols
         if col_idx == 0:
             cols_videos = st.columns(num_cols)
-        cover = get_video_cover(vid["bvid"])
+        cover_b64 = get_video_cover_b64(vid["bvid"])
         with cols_videos[col_idx]:
-            if cover:
+            if cover_b64:
                 st.markdown(
                     f"""<div class="video-card">
-                    <img class="cover" src="{cover}" alt="cover"/>
+                    <img class="cover" src="{cover_b64}" alt="{vid['title']}"/>
+                    <div class="body">
+                    <div class="title">{vid['title']}</div>
+                    <div class="meta"><span class="tag">{vid['type']}</span>辩论赛</div>
+                    </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+            elif not vid["bvid"]:
+                # Sample / demo debate — no real video, designed poster cover
+                st.markdown(
+                    f"""<div class="video-card">
+                    <div class="cover-sample">
+                        <div class="ph-icon">🧠</div>
+                        <div class="ph-title">{vid['title']}</div>
+                        <div class="ph-tag">内置范例</div>
+                    </div>
                     <div class="body">
                     <div class="title">{vid['title']}</div>
                     <div class="meta"><span class="tag">{vid['type']}</span>辩论赛</div>
@@ -431,11 +550,9 @@ if not st.session_state.processing_done:
                     unsafe_allow_html=True,
                 )
             else:
-                # Embed B站 player as fallback cover
                 st.markdown(
                     f"""<div class="video-card">
-                    <iframe src="https://player.bilibili.com/player.html?bvid={vid['bvid']}&page=1&high_quality=1&autoplay=0"
-                    style="width:100%;aspect-ratio:16/10;border:none;" allowfullscreen></iframe>
+                    <div class="cover-placeholder">📺<br/>{vid['title']}</div>
                     <div class="body">
                     <div class="title">{vid['title']}</div>
                     <div class="meta"><span class="tag">{vid['type']}</span>辩论赛</div>

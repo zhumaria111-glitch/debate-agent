@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 import requests
 from dataclasses import dataclass, field
 
@@ -66,8 +67,31 @@ def _extract_youtube_id(url: str) -> str | None:
 
 # ── Bilibili ────────────────────────────────────────────────────────────
 
+COOKIE_FILE = Path(__file__).resolve().parent.parent / "data" / "cookies" / "bilibili.txt"
+
+
+def _load_bilibili_cookies() -> str:
+    """Load Bilibili cookies from Netscape-format file, return Cookie header value."""
+    if not COOKIE_FILE.exists():
+        return ""
+    cookies = {}
+    for line in COOKIE_FILE.read_text().split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            cookies[parts[5]] = parts[6]
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
 def _fetch_bilibili(bv: str) -> VideoTranscript:
-    """Fetch CC/AI subtitles from B站 video."""
+    """Fetch subtitles from B站 video.
+
+    Two paths:
+    1. Player API (no cookies) — user-uploaded subtitles. Fast, always works.
+    2. Wbi player API (with cookies) — AI-generated subtitles. Needs login.
+    """
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -90,34 +114,30 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
         title = data["data"]["title"]
         cid = data["data"]["cid"]
 
-        # Step 2: Get subtitle list from player API
-        player_url = (
-            f"https://api.bilibili.com/x/player/v2"
-            f"?bvid={bv}&cid={cid}&fnver=0&fnval=4048"
-        )
-        resp2 = requests.get(player_url, headers=headers, timeout=15)
-        data2 = resp2.json()
+        # Step 2: Try player API for user-uploaded subtitles (no cookies needed)
+        subtitles = _get_subtitle_list(bv, cid, headers)
 
-        subtitles = (
-            data2.get("data", {})
-            .get("subtitle", {})
-            .get("subtitles", [])
-        )
+        # Step 3: No user subtitles — try Wbi API with cookies for AI字幕
+        if not subtitles:
+            cookie_str = _load_bilibili_cookies()
+            if cookie_str:
+                headers_with_auth = {**headers, "Cookie": cookie_str}
+                subtitles = _get_subtitle_list_wbi(bv, cid, headers_with_auth)
 
         if not subtitles:
+            has_cookies = COOKIE_FILE.exists()
             return VideoTranscript(
                 title=title, platform="bilibili", full_text="",
                 error=(
-                    f"该视频没有可用的字幕。\n\n"
-                    f"「{title}」可能未开启 AI 字幕或 CC 字幕。\n"
-                    f"建议：尝试另一个视频，或直接粘贴文字稿到下方输入框。"
+                    f"该视频没有可用字幕。\n\n"
+                    f"「{title}」未开启 CC 字幕，"
+                    + ("AI 字幕也未生成。" if has_cookies else "且未配置 B站 Cookie，无法获取 AI 字幕。")
+                    + "\n建议：尝试另一个视频，或使用内置视频。"
                 ),
             )
 
-        # Step 3: Pick best subtitle track (prefer Chinese)
+        # Step 4: Download and parse the best subtitle track
         best = _pick_best_subtitle(subtitles)
-
-        # Step 4: Fetch and parse subtitle content
         sub_url = best.get("subtitle_url", "")
         if sub_url.startswith("//"):
             sub_url = "https:" + sub_url
@@ -132,7 +152,6 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
                 error="字幕数据为空。",
             )
 
-        # Step 5: Build full text + segments
         segments = []
         lines = []
         for item in body:
@@ -142,12 +161,10 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
                 segments.append({"start": start, "text": text})
                 lines.append(text)
 
-        full_text = "\n".join(lines)
-
         return VideoTranscript(
             title=title,
             platform="bilibili",
-            full_text=full_text,
+            full_text="\n".join(lines),
             segments=segments,
         )
 
@@ -161,6 +178,30 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
             title="", platform="bilibili",
             full_text="", error=f"解析失败：{e}",
         )
+
+
+def _get_subtitle_list(bv: str, cid: int, headers: dict) -> list[dict]:
+    """Get user-uploaded subtitles via public player API."""
+    url = f"https://api.bilibili.com/x/player/v2?bvid={bv}&cid={cid}&fnver=0&fnval=4048"
+    resp = requests.get(url, headers=headers, timeout=15)
+    return (
+        resp.json()
+        .get("data", {})
+        .get("subtitle", {})
+        .get("subtitles", [])
+    )
+
+
+def _get_subtitle_list_wbi(bv: str, cid: int, headers: dict) -> list[dict]:
+    """Get AI-generated subtitles via Wbi player API (requires cookie auth)."""
+    url = f"https://api.bilibili.com/x/player/wbi/v2?bvid={bv}&cid={cid}&fnver=0&fnval=4048"
+    resp = requests.get(url, headers=headers, timeout=15)
+    return (
+        resp.json()
+        .get("data", {})
+        .get("subtitle", {})
+        .get("subtitles", [])
+    )
 
 
 def _pick_best_subtitle(subtitles: list[dict]) -> dict:

@@ -10,7 +10,11 @@ from src.video_fetcher import fetch_transcript
 from src.transcript_cleaner import clean_transcript
 from src.compressor import compress_transcript
 from src.agent import run_agent_turn, generate_welcome_message, get_suggestions
-from src.knowledge_base import KnowledgeBase
+# Lazy-import KnowledgeBase so the main analysis flow works even if ChromaDB
+# dependencies (opentelemetry/protobuf) are incompatible with the Python version.
+def _get_kb():
+    from src.knowledge_base import KnowledgeBase
+    return KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
 
 # Resolve paths relative to this file so Streamlit works regardless of CWD
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -206,9 +210,15 @@ for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# Init knowledge base
+# Init knowledge base (lazy, non-fatal)
 if st.session_state.kb is None:
-    st.session_state.kb = KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
+    try:
+        st.session_state.kb = _get_kb()
+        st.session_state._kb_available = True
+    except Exception as e:
+        st.session_state.kb = None
+        st.session_state._kb_available = False
+        st.session_state._kb_error = str(e)
 
 # ── Built-in debate videos ──────────────────────────────────────────────
 
@@ -314,9 +324,12 @@ with st.sidebar:
 
     st.markdown("---")
     kb = st.session_state.kb
-    st.caption(f"🧠 知识库 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
+    if kb is not None:
+        st.caption(f"🧠 知识库 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
+    else:
+        st.caption("🧠 知识库暂不可用（依赖兼容性问题）")
 
-    if kb.count() > 0:
+    if kb is not None and kb.count() > 0:
         with st.expander("📚 已入库辩论"):
             for d in kb.list_debates():
                 col_kb, col_del = st.columns([5, 1])
@@ -472,6 +485,10 @@ st.session_state.current_page = "分析" if current_page.startswith("🔍") else
 
 if st.session_state.current_page == "知识库":
     kb = st.session_state.kb
+
+    if kb is None:
+        st.warning("🧠 知识库功能暂不可用。依赖库（ChromaDB/opentelemetry）与当前 Python 版本不兼容。\n\n分析辩论的核心功能不受影响，可以正常使用。")
+        st.stop()
 
     # --- Stats bar ---
     col_kb1, col_kb2, col_kb3 = st.columns([2, 1, 1])
@@ -792,19 +809,20 @@ if st.session_state.processing_done and st.session_state.debate_data:
 
             # Add to knowledge base
             kb = st.session_state.kb
-            kb_count = kb.count()
-            if st.button("🧠 加入知识库", use_container_width=True, help="将本场分析存入知识库，支持跨视频检索"):
-                from src.models import StructuredDebate
-                try:
-                    debate_obj = StructuredDebate.from_dict(debate_data)
-                    debate_id = kb.add_debate(debate_obj, transcript=raw_text)
-                    new_count = kb.count()
-                    if new_count > kb_count:
-                        st.toast(f"已加入知识库！当前共 {new_count} 场辩论。")
-                    else:
-                        st.toast("该辩题已在知识库中，无需重复添加。")
-                except Exception as e:
-                    st.error(f"加入知识库失败：{e}")
+            if kb is not None:
+                kb_count = kb.count()
+                if st.button("🧠 加入知识库", use_container_width=True, help="将本场分析存入知识库，支持跨视频检索"):
+                    from src.models import StructuredDebate
+                    try:
+                        debate_obj = StructuredDebate.from_dict(debate_data)
+                        debate_id = kb.add_debate(debate_obj, transcript=raw_text)
+                        new_count = kb.count()
+                        if new_count > kb_count:
+                            st.toast(f"已加入知识库！当前共 {new_count} 场辩论。")
+                        else:
+                            st.toast("该辩题已在知识库中，无需重复添加。")
+                    except Exception as e:
+                        st.error(f"加入知识库失败：{e}")
 
         mermaid_code = build_mermaid_mindmap(debate_data)
         st.markdown(mermaid_code)
@@ -887,7 +905,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
 
                     # RAG: search knowledge base for cross-debate context
                     kb_ctx = ""
-                    if kb.count() > 0:
+                    if kb is not None and kb.count() > 0:
                         kb_ctx = kb.build_context(user_input, n=5)
 
                     response = run_agent_turn(

@@ -6,3 +6,4 @@ __pycache__/
 data/eval/*.srt
 data/eval/*_raw.json
 data/eval/*_clean*.txt
+data/knowledge_base/

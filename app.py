@@ -10,6 +10,7 @@ from src.video_fetcher import fetch_transcript
 from src.transcript_cleaner import clean_transcript
 from src.compressor import compress_transcript
 from src.agent import run_agent_turn, generate_welcome_message, get_suggestions
+from src.knowledge_base import KnowledgeBase
 
 # Resolve paths relative to this file so Streamlit works regardless of CWD
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -197,10 +198,17 @@ defaults = {
     "video_title": "",
     "video_error": "",
     "current_video_url": "",
+    "kb": None,  # KnowledgeBase instance
+    "kb_messages": [],  # standalone KB chat messages
+    "current_page": "分析",  # "分析" or "知识库"
 }
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
+
+# Init knowledge base
+if st.session_state.kb is None:
+    st.session_state.kb = KnowledgeBase(persist_dir=os.path.join(ROOT_DIR, "data", "knowledge_base"))
 
 # ── Built-in debate videos ──────────────────────────────────────────────
 
@@ -303,6 +311,21 @@ with st.sidebar:
         index=0,
         help="deepseek-chat 速度快，deepseek-reasoner 逻辑更强但较慢。",
     )
+
+    st.markdown("---")
+    kb = st.session_state.kb
+    st.caption(f"🧠 知识库 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
+
+    if kb.count() > 0:
+        with st.expander("📚 已入库辩论"):
+            for d in kb.list_debates():
+                col_kb, col_del = st.columns([5, 1])
+                with col_kb:
+                    st.caption(d["topic"])
+                with col_del:
+                    if st.button("🗑", key=f"del_{d['debate_id']}", help="从知识库中移除"):
+                        kb.remove_debate(d["debate_id"])
+                        st.rerun()
 
 # ── Process transcript ──────────────────────────────────────────────────
 
@@ -434,7 +457,140 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- Three Feature Icons ---
+# ── Page mode switch ───────────────────────────────────────────────────
+
+current_page = st.pills(
+    "模式",
+    ["🔍 分析辩论", "🧠 知识库对话"],
+    default="🔍 分析辩论" if st.session_state.current_page == "分析" else "🧠 知识库对话",
+    label_visibility="collapsed",
+)
+# Map pill label back to short key
+st.session_state.current_page = "分析" if current_page.startswith("🔍") else "知识库"
+
+# ── 知识库对话 mode (standalone, no per-debate dependency) ──────────────
+
+if st.session_state.current_page == "知识库":
+    kb = st.session_state.kb
+
+    # --- Stats bar ---
+    col_kb1, col_kb2, col_kb3 = st.columns([2, 1, 1])
+    with col_kb1:
+        if kb.count() == 0:
+            st.info("知识库为空。先去「分析辩论」分析几场视频，加入知识库后再来。")
+        else:
+            st.markdown(f"### 🧠 知识库对话 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
+    with col_kb2:
+        if st.button("🗑 清空对话", use_container_width=True, key="clear_kb_chat"):
+            st.session_state.kb_messages = []
+            st.rerun()
+
+    if kb.count() == 0:
+        st.stop()
+
+    # --- Search + Chat columns ---
+    col_search, col_chat = st.columns([2, 3])
+
+    with col_search:
+        st.subheader("🔍 检索原文")
+        kb_query = st.text_input(
+            "搜索知识库",
+            placeholder="输入关键词检索所有入库辩论的原文... 如：赌场机制、海德格尔四因说",
+            key="kb_search_main",
+        )
+        if kb_query.strip():
+            with st.spinner("检索中..."):
+                results = kb.search(kb_query.strip(), n=8)
+                transcripts = results["transcripts"]
+                if transcripts.get("documents") and transcripts["documents"][0]:
+                    st.caption(f"找到 {len(transcripts['documents'][0])} 个相关段落：")
+                    for i, doc in enumerate(transcripts["documents"][0]):
+                        meta = transcripts["metadatas"][0][i] if transcripts["metadatas"] else {}
+                        with st.container(border=True):
+                            st.caption(f"📜 {meta.get('topic', '')} · 第{meta.get('chunk_index', 0)+1}/{meta.get('total_chunks', '?')}段")
+                            st.markdown(doc[:500] + ("..." if len(doc) > 500 else ""))
+
+                claims = results["claims"]
+                if claims.get("documents") and claims["documents"][0]:
+                    with st.expander("🎯 相关论点索引"):
+                        for i, doc in enumerate(claims["documents"][0]):
+                            meta = claims["metadatas"][0][i] if claims["metadatas"] else {}
+                            st.caption(f"📌 {meta.get('topic', '')} · {meta.get('side', '')}")
+                            st.markdown(f"- {doc}")
+                elif not (transcripts.get("documents") and transcripts["documents"][0]):
+                    st.caption("未找到相关内容。")
+
+        st.markdown("---")
+        st.caption(f"📚 已入库 {kb.count()} 场辩论")
+        for d in kb.list_debates():
+            col_dn, col_dx = st.columns([5, 1])
+            with col_dn:
+                st.caption(d["topic"])
+            with col_dx:
+                if st.button("🗑", key=f"kbmain_del_{d['debate_id']}", help="移除"):
+                    kb.remove_debate(d["debate_id"])
+                    st.rerun()
+
+    with col_chat:
+        st.subheader("💬 AI 研究助手")
+        st.caption("基于知识库内容回答，可跨视频对比分析")
+
+        # Messages
+        for msg in st.session_state.kb_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Welcome prompt
+        if not st.session_state.kb_messages:
+            st.caption("💡 试试这些问题：")
+            kb_suggestions = [
+                "这知识库里有哪些辩论？各自讨论了什么？",
+                "所有辩论中，反方用过哪些类似的论证策略？",
+                "帮我对比不同辩论中对「技术」这个概念的定义有什么不同。",
+                "哪场辩论里有被回应得最彻底的论点？",
+            ]
+            cols_ks = st.columns(2)
+            for i, sug in enumerate(kb_suggestions):
+                with cols_ks[i % 2]:
+                    if st.button(sug, key=f"kb_sug_{i}", use_container_width=True):
+                        st.session_state.kb_messages.append({"role": "user", "content": sug})
+                        st.rerun()
+
+        # Chat input
+        if kb_input := st.chat_input("向知识库提问..."):
+            st.session_state.kb_messages.append({"role": "user", "content": kb_input})
+
+            with st.chat_message("user"):
+                st.markdown(kb_input)
+
+            with st.chat_message("assistant"):
+                with st.spinner("检索知识库 + 分析中..."):
+                    # Build KB context
+                    kb_ctx = kb.build_context(kb_input, n=8)
+
+                    # Build debate overview context from all indexed debates
+                    all_debates = kb.list_debates()
+                    debate_overview = "\n".join([
+                        f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
+                        for d in all_debates
+                    ])
+
+                    from src.agent import run_kb_turn
+                    response = run_kb_turn(
+                        user_message=kb_input,
+                        kb_context=kb_ctx,
+                        debate_overview=debate_overview,
+                        api_key=API_KEY,
+                        model=model,
+                        base_url=BASE_URL,
+                    )
+                    st.markdown(response)
+
+            st.session_state.kb_messages.append({"role": "assistant", "content": response})
+
+    st.stop()
+
+# ── Feature cards ──────────────────────────────────────────────────────
 _cols_feat = st.columns(3)
 with _cols_feat[0]:
     st.markdown("""
@@ -634,6 +790,22 @@ if st.session_state.processing_done and st.session_state.debate_data:
                 use_container_width=True,
             )
 
+            # Add to knowledge base
+            kb = st.session_state.kb
+            kb_count = kb.count()
+            if st.button("🧠 加入知识库", use_container_width=True, help="将本场分析存入知识库，支持跨视频检索"):
+                from src.models import StructuredDebate
+                try:
+                    debate_obj = StructuredDebate.from_dict(debate_data)
+                    debate_id = kb.add_debate(debate_obj, transcript=raw_text)
+                    new_count = kb.count()
+                    if new_count > kb_count:
+                        st.toast(f"已加入知识库！当前共 {new_count} 场辩论。")
+                    else:
+                        st.toast("该辩题已在知识库中，无需重复添加。")
+                except Exception as e:
+                    st.error(f"加入知识库失败：{e}")
+
         mermaid_code = build_mermaid_mindmap(debate_data)
         st.markdown(mermaid_code)
 
@@ -713,6 +885,11 @@ if st.session_state.processing_done and st.session_state.debate_data:
                     ]
                     history_for_api = history_for_api[:-1]
 
+                    # RAG: search knowledge base for cross-debate context
+                    kb_ctx = ""
+                    if kb.count() > 0:
+                        kb_ctx = kb.build_context(user_input, n=5)
+
                     response = run_agent_turn(
                         user_input,
                         debate_data,
@@ -720,6 +897,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
                         history_for_api,
                         model,
                         base_url=BASE_URL,
+                        kb_context=kb_ctx,
                     )
                     st.markdown(response)
 

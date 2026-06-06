@@ -14,5 +14,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add hf https://Mariazhu:${HF_TOKEN}@huggingface.co/spaces/Mariazhu/debate-agent.git
+          git config --global credential.helper store
+          echo "https://Mariazhu:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+          git remote add hf https://huggingface.co/spaces/Mariazhu/debate-agent.git
           git push hf main --force

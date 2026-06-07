@@ -1,4 +1,4 @@
-"""Debate Agent — AI-powered debate analysis.
+"""Debate Lens — AI-powered debate analysis.
 
 Paste a B站 video link → transcript + structured mind map + personal knowledge base.
 """
@@ -9,7 +9,7 @@ import streamlit as st
 from src.video_fetcher import fetch_transcript
 from src.transcript_cleaner import clean_transcript
 from src.compressor import compress_transcript
-from src.agent import run_agent_turn, generate_welcome_message, get_suggestions
+from src.dialogue import run_dialogue_turn, generate_welcome_message, get_suggestions
 # Lazy-import KnowledgeBase, fixing protobuf compatibility if needed (for Streamlit Cloud Python 3.14).
 def _get_kb():
     try:
@@ -602,7 +602,7 @@ if st.session_state.current_page == "知识库":
                         for d in all_debates
                     ])
 
-                    from src.agent import run_kb_turn
+                    from src.dialogue import run_kb_turn
                     response = run_kb_turn(
                         user_message=kb_input,
                         kb_context=kb_ctx,
@@ -918,7 +918,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
                     if kb is not None and kb.count() > 0:
                         kb_ctx = kb.build_context(user_input, n=5)
 
-                    response = run_agent_turn(
+                    response = run_dialogue_turn(
                         user_input,
                         debate_data,
                         API_KEY,

@@ -1,12 +1,12 @@
-"""Stage 2: Debate analysis agent with multi-turn conversation and tool use."""
+"""Stage 2: Debate analysis and multi-turn dialogue."""
 
 from __future__ import annotations
 
 from .llm import call_llm
-from .prompts import AGENT_SYSTEM, WELCOME_MESSAGE, SUGGESTION_PROMPTS
+from .prompts import DIALOGUE_SYSTEM, WELCOME_MESSAGE, SUGGESTION_PROMPTS
 
 
-def run_agent_turn(
+def run_dialogue_turn(
     user_message: str,
     debate_data: dict,
     api_key: str,
@@ -15,7 +15,7 @@ def run_agent_turn(
     base_url: str | None = None,
     kb_context: str = "",
 ) -> str:
-    """Process one user message and return the agent's response.
+    """Process one user message and return the assistant's response.
 
     Args:
         kb_context: Optional cross-debate knowledge base context (RAG).
@@ -38,7 +38,7 @@ def run_agent_turn(
 最激烈交锋：{qv.get('hottest_clash', '')}
 关键未回应问题：{qv.get('key_unresolved', '')}"""
 
-    system = AGENT_SYSTEM + "\n\n以下是辩论数据：\n" + debate_summary
+    system = DIALOGUE_SYSTEM + "\n\n以下是辩论数据：\n" + debate_summary
     if kb_context:
         system += "\n\n## 知识库中其他辩论的相关内容（可用于跨视频对比分析）\n" + kb_context
     user_msg = f"对话历史：\n{context}\n\n用户最新问题：{user_message}"
@@ -71,7 +71,7 @@ def get_suggestions() -> list[str]:
     return SUGGESTION_PROMPTS
 
 
-KB_AGENT_SYSTEM = """你是一个专业的辩论研究助手。你可以访问用户个人知识库中多场辩论的原文和论点。
+KB_DIALOGUE_SYSTEM = """你是一个专业的辩论研究助手。你可以访问用户个人知识库中多场辩论的原文和论点。
 
 你的能力：
 - 从知识库中检索多场辩论的原文段落来回答问题
@@ -96,7 +96,7 @@ def run_kb_turn(
     base_url: str | None = None,
 ) -> str:
     """Process a KB-only query with cross-debate context."""
-    system = KB_AGENT_SYSTEM
+    system = KB_DIALOGUE_SYSTEM
 
     if debate_overview:
         system += "\n\n## 知识库中所有辩论概览\n" + debate_overview

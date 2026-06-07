@@ -1,4 +1,4 @@
-"""Agent tool implementations for debate analysis.
+"""Search and analysis tools for debate data.
 
 Each tool operates on the StructuredDebate data (passed as dict for
 Streamlit session state compatibility) and the raw transcript.

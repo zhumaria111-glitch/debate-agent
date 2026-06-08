@@ -6,6 +6,7 @@ __pycache__/
 data/eval/*.srt
 data/eval/*_raw.json
 data/eval/*_clean*.txt
+!data/eval/debate_05_cleaned.txt
 data/knowledge_base/
 
 # Byte-compiled / optimized / DLL files

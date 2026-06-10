@@ -181,16 +181,23 @@ st.markdown("""
     /* Hide auto-generated anchor link icons on headings */
     h1 a, h2 a, h3 a, h4 a { display: none; }
 
+    /* Hero text */
+    .hero-subtitle { font-size: 16px; color: #888; margin-bottom: 4px; }
+    .hero-hint { font-size: 14px; color: #bbb; }
+
     /* Dark mode overrides */
     @media (prefers-color-scheme: dark) {
+        .hero-subtitle { color: #aaa; }
+        .hero-hint { color: #777; }
         .video-card { background: #1e1e1e; border-color: #333; }
-        .video-card .body .title { color: #e0e0e0; }
+        .video-card .body .title { color: #e0e0e0 !important; }
         .video-card .meta { color: #aaa; }
         .video-card .tag { background: #3a1a1a; }
-        .feature-card { background: #1e1e1e; border-color: #333; }
-        .feature-card h3 { color: #e0e0e0; }
-        .feature-card p { color: #aaa; }
         .video-card .cover { background: #2a2a2a; }
+        .feature-card { background: #1e1e1e; border-color: #333; }
+        .stMarkdown .feature-card h3, .feature-card h3 { color: #e0e0e0 !important; }
+        .stMarkdown .feature-card p, .feature-card p { color: #aaa !important; }
+        small, .stCaption { color: #aaa !important; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -546,10 +553,10 @@ def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) 
 st.markdown("""
 <div style="text-align: center; padding: 20px 0 10px 0;">
     <h1 style="font-size: 36px; margin-bottom: 8px;">🎤 辩析 · Debate Lens</h1>
-    <p style="font-size: 16px; color: #888; margin-bottom: 4px;">
+    <p class="hero-subtitle">
         一场一小时辩论赛，三分钟看懂论证骨架
     </p>
-    <p style="font-size: 14px; color: #bbb;">
+    <p class="hero-hint">
         粘贴 B站视频链接即可
     </p>
 </div>

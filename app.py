@@ -156,48 +156,34 @@ st.markdown("""
         font-size: 11px;
     }
 
-    /* Feature strip */
-    .feature-strip {
-        display: flex;
-        gap: 28px;
-        padding: 16px 0;
+    /* Feature cards */
+    .feature-card {
+        border: 1px solid rgba(128,128,128,0.2);
+        border-radius: 12px;
+        padding: 24px;
+        text-align: center;
+        background: rgba(128,128,128,0.05);
+        height: 100%;
+    }
+    .feature-card .icon {
+        font-size: 36px;
+        margin-bottom: 12px;
+    }
+    .feature-card h3 {
+        font-size: 18px;
+        margin-bottom: 8px;
+    }
+    .feature-card p {
         font-size: 13px;
         opacity: 0.7;
-        flex-wrap: wrap;
-        justify-content: center;
+        line-height: 1.6;
     }
-    .feature-item strong { font-weight: 600; }
     /* Hide auto-generated anchor link icons on headings */
     h1 a, h2 a, h3 a, h4 a { display: none; }
 
     /* Hero text */
     .hero-subtitle { font-size: 16px; opacity: 0.7; margin-bottom: 4px; }
     .hero-hint { font-size: 14px; opacity: 0.5; }
-
-    /* Tab bar */
-    .tab-bar {
-        display: flex;
-        gap: 0;
-        border-bottom: 2px solid rgba(128,128,128,0.15);
-        margin-bottom: 20px;
-    }
-    .tab-bar .tab {
-        padding: 10px 20px;
-        text-decoration: none;
-        font-size: 15px;
-        font-weight: 500;
-        color: inherit;
-        opacity: 0.55;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -2px;
-        transition: all 0.2s;
-    }
-    .tab-bar .tab:hover { opacity: 0.8; }
-    .tab-bar .tab.active {
-        opacity: 1;
-        border-bottom-color: #ff4b4b;
-        color: #ff4b4b;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -563,16 +549,14 @@ st.markdown("""
 
 # ── Page mode switch ───────────────────────────────────────────────────
 
-st.markdown(f"""
-<div class="tab-bar">
-    <a class="tab {'active' if st.session_state.current_page == '分析' else ''}" href="?page=分析">🔍 分析辩论</a>
-    <a class="tab {'active' if st.session_state.current_page == '知识库' else ''}" href="?page=知识库">🧠 知识库对话</a>
-</div>
-""", unsafe_allow_html=True)
-# Sync from URL param (one-click switching)
-page_param = st.query_params.get("page")
-if page_param in ("分析", "知识库"):
-    st.session_state.current_page = page_param
+current_page = st.radio(
+    "模式",
+    ["🔍 分析辩论", "🧠 知识库对话"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+# Map pill label back to short key
+st.session_state.current_page = "分析" if current_page.startswith("🔍") else "知识库"
 
 # ── 知识库对话 mode (standalone, no per-debate dependency) ──────────────
 
@@ -737,14 +721,32 @@ if st.session_state.current_page == "知识库":
 
     st.stop()
 
-# ── Feature strip ─────────────────────────────────────────────────────
-st.markdown("""
-<div class="feature-strip">
-    <span class="feature-item">📜 <strong>一键生成逐字稿</strong> · 粘贴链接，自动获取字幕并清洗文字稿</span>
-    <span class="feature-item">🧠 <strong>结构化思维导图</strong> · 正反方论点、反驳链、交锋点自动提取</span>
-    <span class="feature-item">📥 <strong>加入知识库</strong> · 分析完成后一键存入，支持跨视频检索对比</span>
-</div>
-""", unsafe_allow_html=True)
+# ── Feature cards ──────────────────────────────────────────────────────
+_cols_feat = st.columns(3)
+with _cols_feat[0]:
+    st.markdown("""
+    <div class="feature-card">
+        <div class="icon">📜</div>
+        <h3>一键生成逐字稿</h3>
+        <p>粘贴视频链接，自动提取字幕<br>自动清洗标点、识别发言人</p>
+    </div>
+    """, unsafe_allow_html=True)
+with _cols_feat[1]:
+    st.markdown("""
+    <div class="feature-card">
+        <div class="icon">🧠</div>
+        <h3>结构化思维导图</h3>
+        <p>正反方论点自动提取<br>反驳链、交锋点、未回应问题一目了然</p>
+    </div>
+    """, unsafe_allow_html=True)
+with _cols_feat[2]:
+    st.markdown("""
+    <div class="feature-card">
+        <div class="icon">📥</div>
+        <h3>加入个人知识库</h3>
+        <p>分析报告 + AI 对话一键导出<br>积累你的辩论学习档案</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 

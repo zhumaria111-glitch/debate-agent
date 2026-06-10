@@ -491,6 +491,10 @@ def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) 
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def build_export_report(debate_data: dict, messages: list[dict], transcript: str) -> str:
+    """Generate a Markdown report string."""
     qv = debate_data.get("quick_view") or {}
     lines = [f"# 辩论分析报告", "", f"## 辩题", f"{debate_data.get('topic', '未知')}"]
 

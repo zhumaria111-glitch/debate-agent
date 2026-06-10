@@ -204,8 +204,34 @@ st.markdown("""
     .hero-subtitle { font-size: 16px; opacity: 0.7; margin-bottom: 4px; }
     .hero-hint { font-size: 14px; opacity: 0.5; }
 
-    /* Sticky chat input at bottom */
-    .stChatInput { position: sticky !important; bottom: 0 !important; z-index: 100 !important; }
+    /* ── Chat layout: fixed bottom input + bubbles ──────────────── */
+    /* Fixed chat input — always at viewport bottom */
+    [data-testid="stChatInput"] {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 9999 !important;
+        padding: 12px 24px 16px 24px !important;
+        background: #ffffff !important;
+        box-shadow: 0 -1px 0 rgba(0,0,0,0.06), 0 -4px 16px rgba(0,0,0,0.04) !important;
+    }
+    @media (prefers-color-scheme: dark) {
+        [data-testid="stChatInput"] { background: #0e1117 !important; }
+    }
+    /* Space below main content so last messages aren't hidden by fixed input */
+    section[data-testid="stMain"] {
+        padding-bottom: 100px !important;
+    }
+    /* Message bubbles: tighter max-width for readability */
+    [data-testid="stChatMessage"] {
+        max-width: 75% !important;
+    }
+    /* User messages — pushed to the right */
+    [data-testid="stChatMessage"][data-testid="stChatMessageRoleUser"],
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar"][style*="right"]) {
+        margin-left: auto !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 

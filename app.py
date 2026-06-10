@@ -38,6 +38,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+def show_copy_button(content: str) -> None:
+    """Render a small copy-to-clipboard button using JavaScript."""
+    import base64
+    payload = base64.b64encode(content.encode()).decode()
+    st.components.v1.html(f"""
+    <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button onclick="navigator.clipboard.writeText(atob('{payload}')).then(()=>this.textContent='✓ 已复制')"
+                style="background:none;border:1px solid rgba(128,128,128,0.2);border-radius:6px;
+                       padding:2px 12px;cursor:pointer;font-size:11px;opacity:0.4;"
+                onmouseover="this.style.opacity='1'"
+                onmouseout="if(this.textContent!=='✓ 已复制')this.style.opacity='0.4'">
+            📋 复制
+        </button>
+    </div>
+    """, height=34)
+
+
 # ── Styles ──────────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -184,6 +203,9 @@ st.markdown("""
     /* Hero text */
     .hero-subtitle { font-size: 16px; opacity: 0.7; margin-bottom: 4px; }
     .hero-hint { font-size: 14px; opacity: 0.5; }
+
+    /* Sticky chat input at bottom */
+    .stChatInput { position: sticky !important; bottom: 0 !important; z-index: 100 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -645,6 +667,8 @@ if st.session_state.current_page == "知识库":
         for msg in st.session_state.kb_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+                if msg["role"] == "assistant":
+                    show_copy_button(msg["content"])
 
         # Welcome prompt
         if not st.session_state.kb_messages:
@@ -685,6 +709,7 @@ if st.session_state.current_page == "知识库":
                         base_url=BASE_URL,
                     )
                     st.markdown(response)
+                    show_copy_button(response)
             st.session_state.kb_messages.append({"role": "assistant", "content": response})
 
         # Chat input
@@ -716,6 +741,7 @@ if st.session_state.current_page == "知识库":
                         base_url=BASE_URL,
                     )
                     st.markdown(response)
+                    show_copy_button(response)
 
             st.session_state.kb_messages.append({"role": "assistant", "content": response})
 
@@ -992,6 +1018,8 @@ if st.session_state.processing_done and st.session_state.debate_data:
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+                if msg["role"] == "assistant":
+                    show_copy_button(msg["content"])
 
         # Suggestions
         user_msg_count = sum(1 for m in st.session_state.messages if m["role"] == "user")
@@ -1027,6 +1055,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
                         model, base_url=BASE_URL, kb_context=kb_ctx,
                     )
                     st.markdown(response)
+                    show_copy_button(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
 
         # Chat input
@@ -1062,6 +1091,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
                         kb_context=kb_ctx,
                     )
                     st.markdown(response)
+                    show_copy_button(response)
 
             st.session_state.messages.append({"role": "assistant", "content": response})
 

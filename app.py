@@ -40,23 +40,6 @@ st.set_page_config(
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
-def show_copy_button(content: str) -> None:
-    """Render a small copy-to-clipboard button using JavaScript."""
-    import base64
-    payload = base64.b64encode(content.encode()).decode()
-    st.components.v1.html(f"""
-    <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-        <button onclick="navigator.clipboard.writeText(atob('{payload}')).then(()=>this.textContent='✓ 已复制')"
-                style="background:none;border:1px solid rgba(128,128,128,0.2);border-radius:6px;
-                       padding:2px 12px;cursor:pointer;font-size:11px;opacity:0.4;"
-                onmouseover="this.style.opacity='1'"
-                onmouseout="if(this.textContent!=='✓ 已复制')this.style.opacity='0.4'">
-            📋 复制
-        </button>
-    </div>
-    """, height=34)
-
-
 # ── Styles ──────────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -205,7 +188,7 @@ st.markdown("""
     .hero-hint { font-size: 14px; opacity: 0.5; }
 
     /* ── Chat layout: fixed bottom input + bubbles ──────────────── */
-    /* Fixed chat input — always at viewport bottom */
+    /* Fixed chat input — at viewport bottom (full-width for Q&A, overridden in KB) */
     [data-testid="stChatInput"] {
         position: fixed !important;
         bottom: 0 !important;
@@ -213,24 +196,30 @@ st.markdown("""
         right: 0 !important;
         z-index: 9999 !important;
         padding: 12px 24px 16px 24px !important;
-        background: #ffffff !important;
+        background: rgba(255,255,255,0.95) !important;
         box-shadow: 0 -1px 0 rgba(0,0,0,0.06), 0 -4px 16px rgba(0,0,0,0.04) !important;
-    }
-    @media (prefers-color-scheme: dark) {
-        [data-testid="stChatInput"] { background: #0e1117 !important; }
     }
     /* Space below main content so last messages aren't hidden by fixed input */
     section[data-testid="stMain"] {
         padding-bottom: 100px !important;
     }
-    /* Message bubbles: tighter max-width for readability */
+    /* ── Message bubbles ────────────────────────────────── */
     [data-testid="stChatMessage"] {
         max-width: 75% !important;
+        border-radius: 18px !important;
+        padding: 10px 18px !important;
+        margin-bottom: 8px !important;
     }
-    /* User messages — pushed to the right */
-    [data-testid="stChatMessage"][data-testid="stChatMessageRoleUser"],
-    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar"][style*="right"]) {
+    /* AI messages: left-aligned, subtle gray bg */
+    div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatar"]) {
+        margin-right: auto !important;
+        background: rgba(128,128,128,0.06) !important;
+    }
+    /* User messages: right-aligned, subtle blue bg */
+    div[data-testid="stChatMessage"]:has(div[data-testid="stChatMessageAvatar"][style*="right"]) {
         margin-left: auto !important;
+        margin-right: 0 !important;
+        background: rgba(59,130,246,0.08) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -693,13 +682,35 @@ if st.session_state.current_page == "知识库":
         st.subheader("💬 AI 研究助手")
         st.caption("基于知识库内容回答，可跨视频对比分析")
 
+        # KB-specific CSS: reposition fixed input to right column, make it visible
+        st.markdown("""
+        <style>
+            [data-testid="stChatInput"] {
+                left: 41% !important;
+                right: 1.5% !important;
+                padding: 12px 0 18px 0 !important;
+            }
+            [data-testid="stChatInput"] textarea {
+                font-size: 15px !important;
+                min-height: 48px !important;
+                border: 2px solid rgba(128,128,128,0.25) !important;
+                border-radius: 12px !important;
+                background: rgba(128,128,128,0.03) !important;
+            }
+            [data-testid="stChatInput"] textarea:focus {
+                border-color: rgba(59,130,246,0.5) !important;
+                box-shadow: 0 0 0 3px rgba(59,130,246,0.1) !important;
+            }
+            section[data-testid="stMain"] {
+                padding-bottom: 120px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
         # Messages
         for msg in st.session_state.kb_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-                if msg["role"] == "assistant":
-                    show_copy_button(msg["content"])
-
         # Welcome prompt
         if not st.session_state.kb_messages:
             st.caption("💡 试试这些问题：")
@@ -1035,9 +1046,6 @@ if st.session_state.processing_done and st.session_state.debate_data:
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-                if msg["role"] == "assistant":
-                    show_copy_button(msg["content"])
-
         # Suggestions
         user_msg_count = sum(1 for m in st.session_state.messages if m["role"] == "user")
         if user_msg_count == 0:

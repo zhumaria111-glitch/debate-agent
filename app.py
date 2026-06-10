@@ -695,59 +695,46 @@ if st.session_state.current_page == "知识库":
         if st.session_state.get("needs_kb_response"):
             st.session_state.needs_kb_response = False
             kb_input = st.session_state.kb_messages[-1]["content"]
-            with st.chat_message("assistant"):
-                with st.spinner("检索知识库 + 分析中..."):
-                    kb_ctx = kb.build_context(kb_input, n=8)
-                    all_debates = kb.list_debates()
-                    debate_overview = "\n".join([
-                        f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
-                        for d in all_debates
-                    ])
-                    from src.dialogue import run_kb_turn
-                    response = run_kb_turn(
-                        user_message=kb_input,
-                        kb_context=kb_ctx,
-                        debate_overview=debate_overview,
-                        api_key=API_KEY,
-                        model=model,
-                        base_url=BASE_URL,
-                    )
-                    st.markdown(response)
-                    show_copy_button(response)
+            with st.spinner("检索知识库 + 分析中..."):
+                kb_ctx = kb.build_context(kb_input, n=8)
+                all_debates = kb.list_debates()
+                debate_overview = "\n".join([
+                    f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
+                    for d in all_debates
+                ])
+                from src.dialogue import run_kb_turn
+                response = run_kb_turn(
+                    user_message=kb_input,
+                    kb_context=kb_ctx,
+                    debate_overview=debate_overview,
+                    api_key=API_KEY,
+                    model=model,
+                    base_url=BASE_URL,
+                )
             st.session_state.kb_messages.append({"role": "assistant", "content": response})
+            st.rerun()
 
-        # Chat input
+        # Chat input (fixed at bottom)
         if kb_input := st.chat_input("向知识库提问..."):
             st.session_state.kb_messages.append({"role": "user", "content": kb_input})
-
-            with st.chat_message("user"):
-                st.markdown(kb_input)
-
-            with st.chat_message("assistant"):
-                with st.spinner("检索知识库 + 分析中..."):
-                    # Build KB context
-                    kb_ctx = kb.build_context(kb_input, n=8)
-
-                    # Build debate overview context from all indexed debates
-                    all_debates = kb.list_debates()
-                    debate_overview = "\n".join([
-                        f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
-                        for d in all_debates
-                    ])
-
-                    from src.dialogue import run_kb_turn
-                    response = run_kb_turn(
-                        user_message=kb_input,
-                        kb_context=kb_ctx,
-                        debate_overview=debate_overview,
-                        api_key=API_KEY,
-                        model=model,
-                        base_url=BASE_URL,
-                    )
-                    st.markdown(response)
-                    show_copy_button(response)
-
+            with st.spinner("检索知识库 + 分析中..."):
+                kb_ctx = kb.build_context(kb_input, n=8)
+                all_debates = kb.list_debates()
+                debate_overview = "\n".join([
+                    f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
+                    for d in all_debates
+                ])
+                from src.dialogue import run_kb_turn
+                response = run_kb_turn(
+                    user_message=kb_input,
+                    kb_context=kb_ctx,
+                    debate_overview=debate_overview,
+                    api_key=API_KEY,
+                    model=model,
+                    base_url=BASE_URL,
+                )
             st.session_state.kb_messages.append({"role": "assistant", "content": response})
+            st.rerun()
 
     st.stop()
 
@@ -1042,62 +1029,49 @@ if st.session_state.processing_done and st.session_state.debate_data:
         if st.session_state.get("needs_qa_response"):
             st.session_state.needs_qa_response = False
             user_msg = st.session_state.messages[-1]["content"]
-            with st.chat_message("assistant"):
-                with st.spinner("🧠 分析中..."):
-                    history_for_api = [
-                        m for m in st.session_state.messages[:-1]
-                        if not (
-                            m["role"] == "assistant"
-                            and m["content"].startswith("这场辩论我已经分析完了")
-                        )
-                    ]
-                    kb_ctx = ""
-                    if kb is not None and kb.count() > 0:
-                        kb_ctx = kb.build_context(user_msg, n=5)
-                    response = run_dialogue_turn(
-                        user_msg, debate_data, API_KEY, history_for_api,
-                        model, base_url=BASE_URL, kb_context=kb_ctx,
+            with st.spinner("🧠 分析中..."):
+                history_for_api = [
+                    m for m in st.session_state.messages[:-1]
+                    if not (
+                        m["role"] == "assistant"
+                        and m["content"].startswith("这场辩论我已经分析完了")
                     )
-                    st.markdown(response)
-                    show_copy_button(response)
+                ]
+                kb_ctx = ""
+                if kb is not None and kb.count() > 0:
+                    kb_ctx = kb.build_context(user_msg, n=5)
+                response = run_dialogue_turn(
+                    user_msg, debate_data, API_KEY, history_for_api,
+                    model, base_url=BASE_URL, kb_context=kb_ctx,
+                )
             st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
 
-        # Chat input
+        # Chat input (fixed at bottom)
         if user_input := st.chat_input("追问这场辩论的任何问题..."):
             st.session_state.messages.append({"role": "user", "content": user_input})
-
-            with st.chat_message("user"):
-                st.markdown(user_input)
-
-            with st.chat_message("assistant"):
-                with st.spinner("🧠 分析中..."):
-                    history_for_api = [
-                        m for m in st.session_state.messages
-                        if not (
-                            m["role"] == "assistant"
-                            and m["content"].startswith("这场辩论我已经分析完了")
-                        )
-                    ]
-                    history_for_api = history_for_api[:-1]
-
-                    # RAG: search knowledge base for cross-debate context
-                    kb_ctx = ""
-                    if kb is not None and kb.count() > 0:
-                        kb_ctx = kb.build_context(user_input, n=5)
-
-                    response = run_dialogue_turn(
-                        user_input,
-                        debate_data,
-                        API_KEY,
-                        history_for_api,
-                        model,
-                        base_url=BASE_URL,
-                        kb_context=kb_ctx,
+            with st.spinner("🧠 分析中..."):
+                history_for_api = [
+                    m for m in st.session_state.messages[:-1]
+                    if not (
+                        m["role"] == "assistant"
+                        and m["content"].startswith("这场辩论我已经分析完了")
                     )
-                    st.markdown(response)
-                    show_copy_button(response)
-
+                ]
+                kb_ctx = ""
+                if kb is not None and kb.count() > 0:
+                    kb_ctx = kb.build_context(user_input, n=5)
+                response = run_dialogue_turn(
+                    user_input,
+                    debate_data,
+                    API_KEY,
+                    history_for_api,
+                    model,
+                    base_url=BASE_URL,
+                    kb_context=kb_ctx,
+                )
             st.session_state.messages.append({"role": "assistant", "content": response})
+            st.rerun()
 
 # ── State: No API key ──────────────────────────────────────────────────
 

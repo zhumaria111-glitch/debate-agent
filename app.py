@@ -178,6 +178,20 @@ st.markdown("""
         color: #888;
         line-height: 1.6;
     }
+    /* Hide auto-generated anchor link icons on headings */
+    h1 a, h2 a, h3 a, h4 a { display: none; }
+
+    /* Dark mode overrides */
+    @media (prefers-color-scheme: dark) {
+        .video-card { background: #1e1e1e; border-color: #333; }
+        .video-card .body .title { color: #e0e0e0; }
+        .video-card .meta { color: #aaa; }
+        .video-card .tag { background: #3a1a1a; }
+        .feature-card { background: #1e1e1e; border-color: #333; }
+        .feature-card h3 { color: #e0e0e0; }
+        .feature-card p { color: #aaa; }
+        .video-card .cover { background: #2a2a2a; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -322,33 +336,7 @@ def get_video_cover_b64(bvid: str) -> str:
         return ""
 
 
-# ── Model selector (sidebar) ─────────────────────────────────────────────
-
-with st.sidebar:
-    model = st.selectbox(
-        "模型",
-        ["deepseek-chat", "deepseek-reasoner"],
-        index=0,
-        help="deepseek-chat 速度快，deepseek-reasoner 逻辑更强但较慢。",
-    )
-
-    st.markdown("---")
-    kb = st.session_state.kb
-    if kb is not None:
-        st.caption(f"🧠 知识库 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
-    else:
-        st.caption("🧠 知识库暂不可用（依赖兼容性问题）")
-
-    if kb is not None and kb.count() > 0:
-        with st.expander("📚 已入库辩论"):
-            for d in kb.list_debates():
-                col_kb, col_del = st.columns([5, 1])
-                with col_kb:
-                    st.caption(d["topic"])
-                with col_del:
-                    if st.button("🗑", key=f"del_{d['debate_id']}", help="从知识库中移除"):
-                        kb.remove_debate(d["debate_id"])
-                        st.rerun()
+model = "deepseek-chat"
 
 # ── Process transcript ──────────────────────────────────────────────────
 
@@ -401,7 +389,94 @@ def build_mermaid_mindmap(debate_data: dict) -> str:
 def _escape_mermaid(text: str) -> str:
     return text.replace('"', "'").replace("(", "（").replace(")", "）").replace("[", "【").replace("]", "】")
 
-def build_export_report(debate_data: dict, messages: list[dict], transcript: str) -> str:
+def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) -> bytes:
+    """Generate a Word (.docx) report and return as bytes."""
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import io
+
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.size = Pt(11)
+    style.font.name = "Microsoft YaHei"
+
+    qv = debate_data.get("quick_view") or {}
+
+    # Title
+    title = doc.add_heading("辩论分析报告", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Topic
+    doc.add_heading("辩题", level=1)
+    doc.add_paragraph(debate_data.get("topic", "未知"))
+
+    # Quick View
+    doc.add_heading("三分钟速览", level=1)
+    doc.add_paragraph(f"一句话总结：{qv.get('one_sentence_summary') or '（未生成）'}")
+    doc.add_paragraph(f"正方立场：{debate_data.get('affirmative_side', '')}")
+    doc.add_paragraph(f"反方立场：{debate_data.get('negative_side', '')}")
+
+    doc.add_heading("正方 Top 3 论点", level=2)
+    for i, p in enumerate(qv.get("affirmative_top3", []), 1):
+        doc.add_paragraph(f"{i}. {p}")
+
+    doc.add_heading("反方 Top 3 论点", level=2)
+    for i, p in enumerate(qv.get("negative_top3", []), 1):
+        doc.add_paragraph(f"{i}. {p}")
+
+    doc.add_paragraph(f"🔥 最激烈交锋：{qv.get('hottest_clash') or '（未生成）'}")
+    doc.add_paragraph(f"⚠️ 关键未回应问题：{qv.get('key_unresolved') or '（未生成）'}")
+    keywords = " | ".join(qv.get("keywords", []))
+    if keywords:
+        doc.add_paragraph(f"🏷 关键词：{keywords}")
+
+    # Rounds
+    rounds = debate_data.get("rounds", [])
+    if rounds:
+        doc.add_heading("论点攻防链（逐回合）", level=1)
+        for r in rounds:
+            doc.add_heading(f"{r.get('round_name', '')} — {r.get('side', '')} {r.get('speaker', '')}", level=2)
+            doc.add_paragraph(r.get("content_summary", ""))
+            for c in r.get("claims", []):
+                rebut = f" ↳ 反驳 {c.get('rebuts_claim_id')}" if c.get("rebuts_claim_id") else ""
+                status = " ✅已回应" if c.get("responded") else " ⚠️未回应"
+                p = doc.add_paragraph(f"• {c.get('content', '')}{rebut}{status}")
+                if c.get("evidence"):
+                    doc.add_paragraph(f"  证据：{c['evidence']}")
+                if c.get("response_summary"):
+                    doc.add_paragraph(f"  回应：{c['response_summary']}")
+
+    # Unresolved Issues
+    unresolved = debate_data.get("unresolved_issues", [])
+    if unresolved:
+        doc.add_heading("未解决的问题", level=1)
+        for u in unresolved:
+            doc.add_paragraph(f"[{u.get('importance', '中')}] {u.get('issue', '')}（提出方：{u.get('raised_by', '')}）")
+
+    # Factual Claims
+    factual = debate_data.get("factual_claims", [])
+    if factual:
+        doc.add_heading("事实性主张", level=1)
+        for f in factual:
+            evidence = f" — 证据：{f.get('evidence_detail')}" if f.get("has_evidence") else " — 无证据"
+            doc.add_paragraph(f"• {f.get('claim', '')}（{f.get('speaker', '')}）{evidence}")
+
+    # Q&A
+    qa_msgs = [m for m in messages if m["role"] != "assistant" or not m["content"].startswith("这场辩论我已经分析完了")]
+    if qa_msgs:
+        doc.add_heading("追问记录", level=1)
+        for m in qa_msgs:
+            role = "AI" if m["role"] == "assistant" else "用户"
+            doc.add_paragraph(f"【{role}】{m['content']}")
+
+    # Transcript
+    doc.add_heading("辩论逐字稿", level=1)
+    doc.add_paragraph(transcript)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
     qv = debate_data.get("quick_view") or {}
     lines = [f"# 辩论分析报告", "", f"## 辩题", f"{debate_data.get('topic', '未知')}"]
 
@@ -482,10 +557,10 @@ st.markdown("""
 
 # ── Page mode switch ───────────────────────────────────────────────────
 
-current_page = st.pills(
+current_page = st.radio(
     "模式",
     ["🔍 分析辩论", "🧠 知识库对话"],
-    default="🔍 分析辩论" if st.session_state.current_page == "分析" else "🧠 知识库对话",
+    horizontal=True,
     label_visibility="collapsed",
 )
 # Map pill label back to short key
@@ -509,8 +584,20 @@ if st.session_state.current_page == "知识库":
             st.markdown(f"### 🧠 知识库对话 · {kb.count()} 场辩论 · {kb.count_chunks()} 个文本块")
     with col_kb2:
         if st.button("🗑 清空对话", use_container_width=True, key="clear_kb_chat"):
-            st.session_state.kb_messages = []
-            st.rerun()
+            st.session_state.confirm_clear_kb = True
+
+    if st.session_state.get("confirm_clear_kb"):
+        st.warning("确定要清空所有对话记录吗？此操作不可撤销。")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("确认清空", use_container_width=True, key="confirm_clear_kb_yes"):
+                st.session_state.kb_messages = []
+                st.session_state.confirm_clear_kb = False
+                st.rerun()
+        with c2:
+            if st.button("取消", use_container_width=True, key="confirm_clear_kb_no"):
+                st.session_state.confirm_clear_kb = False
+                st.rerun()
 
     if kb.count() == 0:
         st.stop()
@@ -581,7 +668,32 @@ if st.session_state.current_page == "知识库":
                 with cols_ks[i % 2]:
                     if st.button(sug, key=f"kb_sug_{i}", use_container_width=True):
                         st.session_state.kb_messages.append({"role": "user", "content": sug})
+                        st.session_state.needs_kb_response = True
                         st.rerun()
+
+        # Auto-respond to KB preset question
+        if st.session_state.get("needs_kb_response"):
+            st.session_state.needs_kb_response = False
+            kb_input = st.session_state.kb_messages[-1]["content"]
+            with st.chat_message("assistant"):
+                with st.spinner("检索知识库 + 分析中..."):
+                    kb_ctx = kb.build_context(kb_input, n=8)
+                    all_debates = kb.list_debates()
+                    debate_overview = "\n".join([
+                        f"- {d['topic']}：{d['summary'][:100] if d.get('summary') else ''}"
+                        for d in all_debates
+                    ])
+                    from src.dialogue import run_kb_turn
+                    response = run_kb_turn(
+                        user_message=kb_input,
+                        kb_context=kb_ctx,
+                        debate_overview=debate_overview,
+                        api_key=API_KEY,
+                        model=model,
+                        base_url=BASE_URL,
+                    )
+                    st.markdown(response)
+            st.session_state.kb_messages.append({"role": "assistant", "content": response})
 
         # Chat input
         if kb_input := st.chat_input("向知识库提问..."):
@@ -624,7 +736,7 @@ with _cols_feat[0]:
     <div class="feature-card">
         <div class="icon">📜</div>
         <h3>一键生成逐字稿</h3>
-        <p>粘贴视频链接，自动提取完整字幕<br>说话人分离，标注时间轴</p>
+        <p>粘贴视频链接，自动提取字幕<br>自动清洗标点、识别发言人</p>
     </div>
     """, unsafe_allow_html=True)
 with _cols_feat[1]:
@@ -651,13 +763,14 @@ st.markdown("---")
 if not st.session_state.processing_done:
     st.markdown("### 🔗 粘贴视频链接开始分析")
 
-    col_url, col_btn = st.columns([4, 1])
+    col_url, col_btn = st.columns([5, 1])
     with col_url:
-        video_url = st.text_input(
+        video_url = st.text_area(
             "视频链接",
-            placeholder="https://www.bilibili.com/video/BV...",
+            placeholder="粘贴 B站 / YouTube 视频链接到这里...",
             key="video_url_input",
             label_visibility="collapsed",
+            height=68,
         )
     with col_btn:
         analyze_disabled = not (API_KEY and video_url.strip())
@@ -771,8 +884,15 @@ if st.session_state.processing_done and st.session_state.debate_data:
     st.markdown("---")
 
     # --- Header ---
-    if st.session_state.video_title:
-        st.caption(f"📺 {st.session_state.video_title}")
+    col_title, col_new = st.columns([4, 1])
+    with col_title:
+        if st.session_state.video_title:
+            st.caption(f"📺 {st.session_state.video_title}")
+    with col_new:
+        if st.button("🔄 分析新的辩论", use_container_width=True, key="new_analysis_top"):
+            for key in defaults:
+                st.session_state[key] = defaults[key]
+            st.rerun()
 
     # --- Function tabs ---
     tab_transcript, tab_mindmap, tab_qa = st.tabs([
@@ -801,22 +921,16 @@ if st.session_state.processing_done and st.session_state.debate_data:
         with col_m1:
             st.subheader("论证结构思维导图")
         with col_m2:
-            report = build_export_report(debate_data, st.session_state.messages, raw_text)
+            report_md = build_export_report(debate_data, st.session_state.messages, raw_text)
+            # Word download
+            report_docx = build_export_docx(debate_data, st.session_state.messages, raw_text)
             st.download_button(
-                "📥 导出报告（Markdown）",
-                data=report,
-                file_name=f"辩论分析_{debate_data.get('topic', 'report')}.md",
-                mime="text/markdown",
+                "📥 下载报告（Word）",
+                data=report_docx,
+                file_name=f"辩论分析_{debate_data.get('topic', 'report')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True,
             )
-            st.download_button(
-                "📋 导出原始 JSON",
-                data=json.dumps(debate_data, ensure_ascii=False, indent=2),
-                file_name=f"辩论分析_{debate_data.get('topic', 'json')}.json",
-                mime="application/json",
-                use_container_width=True,
-            )
-
             # Add to knowledge base
             kb = st.session_state.kb
             if kb is not None:
@@ -833,6 +947,10 @@ if st.session_state.processing_done and st.session_state.debate_data:
                             st.toast("该辩题已在知识库中，无需重复添加。")
                     except Exception as e:
                         st.error(f"加入知识库失败：{e}")
+
+        # View full report
+        with st.expander("📋 查看完整报告"):
+            st.markdown(report_md)
 
         mermaid_code = build_mermaid_mindmap(debate_data)
         st.markdown(mermaid_code)
@@ -893,7 +1011,31 @@ if st.session_state.processing_done and st.session_state.debate_data:
                 with cols_s[i]:
                     if st.button(sug, key=f"sug_{i}", use_container_width=True):
                         st.session_state.messages.append({"role": "user", "content": sug})
+                        st.session_state.needs_qa_response = True
                         st.rerun()
+
+        # Auto-respond to preset question
+        if st.session_state.get("needs_qa_response"):
+            st.session_state.needs_qa_response = False
+            user_msg = st.session_state.messages[-1]["content"]
+            with st.chat_message("assistant"):
+                with st.spinner("🧠 分析中..."):
+                    history_for_api = [
+                        m for m in st.session_state.messages[:-1]
+                        if not (
+                            m["role"] == "assistant"
+                            and m["content"].startswith("这场辩论我已经分析完了")
+                        )
+                    ]
+                    kb_ctx = ""
+                    if kb is not None and kb.count() > 0:
+                        kb_ctx = kb.build_context(user_msg, n=5)
+                    response = run_dialogue_turn(
+                        user_msg, debate_data, API_KEY, history_for_api,
+                        model, base_url=BASE_URL, kb_context=kb_ctx,
+                    )
+                    st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
 
         # Chat input
         if user_input := st.chat_input("追问这场辩论的任何问题..."):
@@ -930,16 +1072,6 @@ if st.session_state.processing_done and st.session_state.debate_data:
                     st.markdown(response)
 
             st.session_state.messages.append({"role": "assistant", "content": response})
-
-    # ── Bottom actions ───────────────────────────────────────────────
-    st.markdown("---")
-    col_new, _ = st.columns([1, 5])
-    with col_new:
-        if st.button("🔄 分析新的辩论", use_container_width=True):
-            for key in defaults:
-                st.session_state[key] = defaults[key]
-            st.rerun()
-
 
 # ── State: No API key ──────────────────────────────────────────────────
 

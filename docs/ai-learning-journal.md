@@ -625,6 +625,57 @@ DeepLearning.AI 的 AI Agent 评估课程 + HuggingFace 的 GAIA benchmark（目
 
 **好产品 idea 的来源：** 平时多体验产品、游戏、电影、书籍，兴趣驱动的力量远大于被动学习
 
+### 6.5 Dify 知识库（AI 赋能历史学研究）
+
+**标题：AI 赋能历史学研究**
+
+**一、AI 赋能历史学研究具体体现在哪些方面？**
+
+具体应用场景：
+1. 数据可视化
+2. 语言与写作
+3. 编纂个人知识库，存储史料、快速检索与阅读史料、交互式聊天提供灵感
+4. 爬虫数据库快速整理史料（近代史研究所档案馆馆藏检索系统）
+
+**二、个人应用实例——中国厘金史知识库**
+
+（一）个人工作流：OCR → 数据清洗 → chunking → embedding → rerank → 对话机器人
+
+（二）工具与模型：
+- 工具：Cursor 进行 OCR 和数据清洗、Dify 进行 chunking + embedding + rerank + 对话机器人
+- 模型：OCR 用 qwen-vl-ocr-2025-11-20、embedding 用 text-embedding-v3、rerank 用 qwen3-rerank、LLM 用 qwen3.6-plus
+
+（三）Prompt Engineering 三轮迭代：
+
+**Prompt 1：** 将 PDF 转成干净的 Markdown，使用 pdf2image + 通义千问 qwen-vl-max API 进行 OCR，要求保留标题层级、识别表格、去除页眉页脚、将公式转为 LaTeX，输出到 output_md 文件夹并支持断点续传。
+
+操作过程：PDF → 图片（pdf2image）→ 逐页 OCR → 清洗合并成 Markdown，用本地进度文件实现断点续传。
+
+问题 1：模型从 qwen-vl-max 换为 qwen-vl-ocr-2025-11-20（前者多模态大模型对接口格式要求高，后者为 OCR 专用模型，接口简单，容错率高）。
+问题 2：试跑 2 页成功（model list 做最小鉴权测试），但大量处理崩溃。原因：没有指定 lastpage，不设置结束页码，把无限多的页码一次性加载到内存，把内存撑爆。
+
+**Prompt 2：** 严格按要求将《中国厘金史（罗玉东）》759 页 PDF 完整转换为 Markdown。关键改进：指定页码范围 1-759、流式迭代处理避免内存溢出、格式规范（标题层级/表格/公式/图片引用）、跨页重复内容自动去重。
+
+问题 3：处理速度太慢，700 多页用时 3 个小时。原因：没有多线程处理、逐页转图片存本地磁盘速度慢。
+
+**Prompt 3：** 在 Prompt 2 基础上加入多线程处理 + 内存直传模式（整个过程不在电脑里生成本地图片文件，所有操作在内存里完成，直接把图片转成 Base64 文本塞进 md 文件），吃内存和带宽，根据电脑情况适当调整。
+
+（四）Dify 配置参数：
+- chunking 父子分段：父块 1200 字符、子块 250 字符、重叠 250 字符，可反复调试
+- 配置 embedding 和 rerank 模型后即可构建对话机器人
+- 产品网址：https://udify.app/chat/K583GtGRELKK7AL0
+
+**三、心得感悟：**
+
+要不要用？要怎么样用？是否需要追逐技术？要怎么入手？
+
+三种实现方式从简到繁：
+- ChatPDF 类工具
+- 利用工具：带知识库的 AI 产品（腾讯 IMA、秘塔 AI、有道智库、思源笔记、Notion AI、FastGPT、语雀 AI 知识库、RAGFlow、Dify、Google NotebookLM）
+- 笔记软件：Notion AI、Obsidian、NotebookLM、腾讯 IMA
+
+建立个人长期知识库的核心：理解底层原理后自建获取更多控制，持续调试参数（chunking 策略对最终效果影响巨大）。技术会迭代，但理解"为什么慢""为什么崩溃"的排查能力不会过时。
+
 ---
 
 ## 七、AI 产品方法论

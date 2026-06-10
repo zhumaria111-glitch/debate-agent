@@ -189,12 +189,12 @@ st.markdown("""
     @media (prefers-color-scheme: dark) {
         .hero-subtitle { color: #aaa; }
         .hero-hint { color: #777; }
-        .video-card { background: #1e1e1e; border-color: #333; }
+        .video-card { background: #1e1e1e !important; border-color: #333 !important; }
         .video-card .body .title { color: #e0e0e0 !important; }
-        .video-card .meta { color: #aaa; }
-        .video-card .tag { background: #3a1a1a; }
-        .video-card .cover { background: #2a2a2a; }
-        .feature-card { background: #1e1e1e; border-color: #333; }
+        .video-card .meta { color: #aaa !important; }
+        .video-card .tag { background: #3a1a1a !important; }
+        .video-card .cover { background: #2a2a2a !important; }
+        .feature-card { background: #1e1e1e !important; border-color: #333 !important; }
         .stMarkdown .feature-card h3, .feature-card h3 { color: #e0e0e0 !important; }
         .stMarkdown .feature-card p, .feature-card p { color: #aaa !important; }
         small, .stCaption { color: #aaa !important; }

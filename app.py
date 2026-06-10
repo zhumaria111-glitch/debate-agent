@@ -47,12 +47,12 @@ st.markdown("""
 
     /* Video cards */
     .video-card {
-        border: 1px solid #e0e0e0;
+        border: 1px solid rgba(128,128,128,0.2);
         border-radius: 12px;
         overflow: hidden;
         cursor: pointer;
         transition: all 0.25s;
-        background: white;
+        background: rgba(128,128,128,0.05);
         height: 100%;
     }
     .video-card:hover {
@@ -64,12 +64,12 @@ st.markdown("""
         width: 100%;
         aspect-ratio: 16/10;
         object-fit: cover;
-        background: #f5f5f5;
+        background: rgba(128,128,128,0.08);
     }
     .video-card .cover-placeholder {
         width: 100%;
         aspect-ratio: 16/10;
-        background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+        background: linear-gradient(135deg, rgba(45,45,45,0.9) 0%, rgba(26,26,26,0.9) 100%);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -100,7 +100,7 @@ st.markdown("""
     .video-card .cover-sample {
         width: 100%;
         aspect-ratio: 16/10;
-        background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+        background: linear-gradient(135deg, rgba(45,45,45,0.9) 0%, rgba(26,26,26,0.9) 100%);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -143,13 +143,13 @@ st.markdown("""
     }
     .video-card .meta {
         font-size: 12px;
-        color: #999;
+        opacity: 0.6;
         display: flex;
         gap: 8px;
         align-items: center;
     }
     .video-card .tag {
-        background: #fff0f0;
+        background: rgba(255,75,75,0.1);
         color: #ff4b4b;
         padding: 2px 8px;
         border-radius: 4px;
@@ -158,11 +158,11 @@ st.markdown("""
 
     /* Feature cards */
     .feature-card {
-        border: 1px solid #e8e8e8;
+        border: 1px solid rgba(128,128,128,0.2);
         border-radius: 12px;
         padding: 24px;
         text-align: center;
-        background: white;
+        background: rgba(128,128,128,0.05);
         height: 100%;
     }
     .feature-card .icon {
@@ -175,30 +175,15 @@ st.markdown("""
     }
     .feature-card p {
         font-size: 13px;
-        color: #888;
+        opacity: 0.7;
         line-height: 1.6;
     }
     /* Hide auto-generated anchor link icons on headings */
     h1 a, h2 a, h3 a, h4 a { display: none; }
 
     /* Hero text */
-    .hero-subtitle { font-size: 16px; color: #888; margin-bottom: 4px; }
-    .hero-hint { font-size: 14px; color: #bbb; }
-
-    /* Dark mode overrides */
-    @media (prefers-color-scheme: dark) {
-        .hero-subtitle { color: #aaa; }
-        .hero-hint { color: #777; }
-        .video-card { background: #1e1e1e !important; border-color: #333 !important; }
-        .video-card .body .title { color: #e0e0e0 !important; }
-        .video-card .meta { color: #aaa !important; }
-        .video-card .tag { background: #3a1a1a !important; }
-        .video-card .cover { background: #2a2a2a !important; }
-        .feature-card { background: #1e1e1e !important; border-color: #333 !important; }
-        .stMarkdown .feature-card h3, .feature-card h3 { color: #e0e0e0 !important; }
-        .stMarkdown .feature-card p, .feature-card p { color: #aaa !important; }
-        small, .stCaption { color: #aaa !important; }
-    }
+    .hero-subtitle { font-size: 16px; opacity: 0.7; margin-bottom: 4px; }
+    .hero-hint { font-size: 14px; opacity: 0.5; }
 </style>
 """, unsafe_allow_html=True)
 

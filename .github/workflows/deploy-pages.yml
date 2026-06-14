@@ -6,10 +6,6 @@ on:
     paths:
       - 'personal-page/**'
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -23,13 +19,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install & Build
+      - name: Build
+        working-directory: personal-page
+        env:
+          CI: false
         run: |
-          cd personal-page
           npm ci
           npm run build
 
-      - uses: peaceiris/actions-gh-pages@v4
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: personal-page/dist
+          publish_dir: ./personal-page/dist
+          force_orphan: true

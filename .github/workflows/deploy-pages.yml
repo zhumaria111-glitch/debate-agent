@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'personal-page/**'
+      - '.github/workflows/deploy-pages.yml'
 
 jobs:
   deploy:

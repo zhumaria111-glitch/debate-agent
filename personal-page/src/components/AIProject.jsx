@@ -43,7 +43,7 @@ const docs = [
     summary: '定向内测 20 余人、68 条原始反馈的完整闭环。按 P0/P1/P2 三级优先级分批迭代，19 条已解决，1 条关闭，2 条延后。含优先级评判标准、决策逻辑、三波执行节奏，体现 PM 的用户思维和问题解决意识。',
     link: 'https://github.com/zhumaria111-glitch/debate-agent/blob/main/docs/user-feedback-log.md',
   },
-]
+  ]
 
 export default function AIProject() {
   return (

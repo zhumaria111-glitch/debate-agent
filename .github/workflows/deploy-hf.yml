@@ -14,16 +14,27 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Collect only Streamlit app files (exclude personal-page with binary images)
-          mkdir -p /tmp/hf-push
-          cp -r app.py src/ requirements.txt data/ docs/ .streamlit/ .gitignore README.md /tmp/hf-push/ 2>/dev/null
+          set -e
+
+          # Verify required files exist
+          test -f app.py || { echo "ERROR: app.py not found"; exit 1; }
+
+          # Create clean deploy dir (exclude personal-page with binary images)
+          rm -rf /tmp/hf-push && mkdir -p /tmp/hf-push
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name 'personal-page' \
+            ! -name '.git' \
+            ! -name '.gitignore' \
+            -exec cp -r {} /tmp/hf-push/ \;
+          # .gitignore is needed for HF to detect the app type
+          cp .gitignore /tmp/hf-push/
 
           cd /tmp/hf-push
           git init
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add -A
-          git commit -m "deploy $(date +%Y%m%d%H%M%S)" || true
+          git commit -m "deploy $(date +%Y%m%dT%H%M%S)"
 
-          git remote add hf https://Mariazhu:${HF_TOKEN}@huggingface.co/spaces/Mariazhu/debate-agent.git
+          git remote add hf "https://Mariazhu:${HF_TOKEN}@huggingface.co/spaces/Mariazhu/debate-agent.git"
           git push hf main --force

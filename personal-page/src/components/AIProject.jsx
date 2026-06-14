@@ -71,7 +71,7 @@ export default function AIProject() {
             在线体验 &rarr;
           </a>
         </div>
-        <img src="./debate-lens.png" alt="Debate Lens" className="project-img" />
+        <img src="./debate-lens.jpg" alt="Debate Lens" className="project-img" />
       </div>
 
       {/* ── Highlights ────────────────────────────────────── */}

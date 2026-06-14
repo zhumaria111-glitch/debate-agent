@@ -17,19 +17,24 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 'lts/*'
 
       - name: Build
         working-directory: personal-page
-        env:
-          CI: false
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./personal-page/dist
-          force_orphan: true
+        run: |
+          set -e
+          cd /tmp
+          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git pages 2>/dev/null || git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git pages && cd pages && git checkout --orphan gh-pages && git rm -rf .
+          cd /tmp/pages
+          cp -r ${{ github.workspace }}/personal-page/dist/* .
+          touch .nojekyll
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A
+          git diff --staged --quiet || git commit -m "deploy $(date +%Y%m%d%H%M%S)"
+          git push origin gh-pages

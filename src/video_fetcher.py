@@ -16,6 +16,7 @@ class VideoTranscript:
     full_text: str
     segments: list[dict] = field(default_factory=list)  # [{start, text}, ...]
     error: str = ""
+    duration: int = 0  # video length in seconds
 
 
 # ── Public API ──────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
 
         title = data["data"]["title"]
         cid = data["data"]["cid"]
+        duration = data["data"].get("duration", 0)  # seconds
 
         # Step 2: Try player API for user-uploaded subtitles (no cookies needed)
         subtitles = _get_subtitle_list(bv, cid, headers)
@@ -173,6 +175,7 @@ def _fetch_bilibili(bv: str) -> VideoTranscript:
             platform="bilibili",
             full_text="\n".join(lines),
             segments=segments,
+            duration=duration,
         )
 
     except requests.RequestException as e:

@@ -40,6 +40,39 @@ st.set_page_config(
 
 # ── Helpers ─────────────────────────────────────────────────────────────
 
+def _format_duration(seconds: int) -> str:
+    """Format seconds to a readable duration string."""
+    if seconds <= 0:
+        return "—"
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    if h > 0:
+        return f"{h} 小时 {m} 分钟" if m > 0 else f"{h} 小时"
+    return f"{m} 分钟"
+
+
+def _get_video_duration(url: str) -> int:
+    """Quickly fetch video duration from B站 API (fast, <1s). Returns 0 if unknown."""
+    import re
+    m = re.search(r"BV[a-zA-Z0-9]{10}", url)
+    if not m:
+        return 0
+    try:
+        resp = __import__("requests").get(
+            f"https://api.bilibili.com/x/web-interface/view?bvid={m.group(0)}",
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/"},
+            timeout=5,
+        )
+        data = resp.json()
+        if data.get("code") == 0:
+            dur = int(data["data"].get("duration", 0))
+            # Sanity cap: debate videos are < 5 hours (18000 sec)
+            return dur if 0 < dur <= 18000 else 0
+    except Exception:
+        pass
+    return 0
+
+
 # ── Styles ──────────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -221,6 +254,42 @@ st.markdown("""
         margin-right: 0 !important;
         background: rgba(59,130,246,0.08) !important;
     }
+    /* ── Completion modal ─────────────────────────────── */
+    .completion-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.4); z-index: 99999;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .completion-card {
+        background: #fff; border-radius: 16px; padding: 36px 44px;
+        max-width: 380px; width: 90%; text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+    .completion-card h3 {
+        font-size: 18px; margin: 0 0 24px 0; font-weight: 600; opacity: 0.85;
+    }
+    .completion-card .stat-row {
+        display: flex; justify-content: space-between; align-items: baseline;
+        padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+    .completion-card .stat-label { font-size: 14px; opacity: 0.55; }
+    .completion-card .stat-value { font-size: 22px; font-weight: 600; }
+    .completion-card .stat-value.save { color: #22c55e; }
+    .completion-card .progress-section { margin-top: 28px; }
+    .completion-card .progress-bar {
+        width: 100%; height: 6px; background: rgba(0,0,0,0.08); border-radius: 3px;
+        overflow: hidden; margin-bottom: 8px;
+    }
+    .completion-card .progress-fill {
+        height: 100%; width: 5%; background: #22c55e; border-radius: 3px;
+        animation: progress-grow 60s ease-out forwards;
+    }
+    @keyframes progress-grow {
+        from { width: 5%; }
+        to { width: 90%; }
+    }
+    .completion-card .progress-label { font-size: 12px; opacity: 0.35; }
+    .completion-card .close-hint { margin-top: 20px; font-size: 12px; opacity: 0.25; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -262,6 +331,31 @@ defaults = {
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
+
+# ── Analysis progress modal (renders at page level so visible during sync analysis) ──
+if st.session_state.get("show_analysis_modal"):
+    duration_str = _format_duration(st.session_state.get("video_duration", 0))
+    st.markdown(f"""
+    <div class="completion-overlay">
+        <div class="completion-card">
+            <h3>正在分析中</h3>
+            <div class="stat-row">
+                <span class="stat-label">原视频时长</span>
+                <span class="stat-value">{duration_str}</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">预计耗时</span>
+                <span class="stat-value save">3 分钟以内</span>
+            </div>
+            <div class="progress-section">
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-label">处理中…</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Init knowledge base (lazy, non-fatal)
 if st.session_state.kb is None:
@@ -418,6 +512,40 @@ def build_mermaid_mindmap(debate_data: dict) -> str:
 def _escape_mermaid(text: str) -> str:
     return text.replace('"', "'").replace("(", "（").replace(")", "）").replace("[", "【").replace("]", "】")
 
+def _render_mermaid(markdown_code: str, height: int = 900):
+    """Render Mermaid markdown code as an interactive diagram."""
+    # Strip ```mermaid fences
+    src = markdown_code.strip()
+    for prefix in ("```mermaid", "```"):
+        if src.startswith(prefix):
+            src = src[len(prefix):].strip()
+    if src.endswith("```"):
+        src = src[:-3].strip()
+    # Escape for safe embedding
+    src_escaped = src.replace("`", "\\`").replace("$", "\\$")
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({{
+    startOnLoad: true,
+    theme: 'default',
+    mindmap: {{ useMaxWidth: true, padding: 20 }},
+    fontSize: 18,
+}});
+</script>
+<style>
+body {{ margin: 0; display: flex; justify-content: center; }}
+.mermaid svg {{ max-width: 100% !important; height: auto !important; min-height: 700px; }}
+</style>
+</head>
+<body>
+<pre class="mermaid">{src_escaped}</pre>
+</body>
+</html>"""
+    st.components.v1.html(html, height=height, scrolling=True)
+
 def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) -> bytes:
     """Generate a Word (.docx) report and return as bytes."""
     from docx import Document
@@ -428,7 +556,19 @@ def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) 
     doc = Document()
     style = doc.styles["Normal"]
     style.font.size = Pt(11)
-    style.font.name = "Microsoft YaHei"
+
+    # 统一设置中西文字体，避免中英文混排时字体不一致
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    rPr = style.element.get_or_add_rPr()
+    rFonts = rPr.find(qn("w:rFonts"))
+    if rFonts is None:
+        rFonts = OxmlElement("w:rFonts")
+        rPr.insert(0, rFonts)
+    rFonts.set(qn("w:ascii"), "Arial")
+    rFonts.set(qn("w:hAnsi"), "Arial")
+    rFonts.set(qn("w:eastAsia"), "Arial")
+    rFonts.set(qn("w:cs"), "Arial")
 
     qv = debate_data.get("quick_view") or {}
 
@@ -454,11 +594,11 @@ def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) 
     for i, p in enumerate(qv.get("negative_top3", []), 1):
         doc.add_paragraph(f"{i}. {p}")
 
-    doc.add_paragraph(f"🔥 最激烈交锋：{qv.get('hottest_clash') or '（未生成）'}")
-    doc.add_paragraph(f"⚠️ 关键未回应问题：{qv.get('key_unresolved') or '（未生成）'}")
+    doc.add_paragraph(f"[最激烈交锋] {qv.get('hottest_clash') or '（未生成）'}")
+    doc.add_paragraph(f"[关键未回应问题] {qv.get('key_unresolved') or '（未生成）'}")
     keywords = " | ".join(qv.get("keywords", []))
     if keywords:
-        doc.add_paragraph(f"🏷 关键词：{keywords}")
+        doc.add_paragraph(f"[关键词] {keywords}")
 
     # Rounds
     rounds = debate_data.get("rounds", [])
@@ -468,8 +608,8 @@ def build_export_docx(debate_data: dict, messages: list[dict], transcript: str) 
             doc.add_heading(f"{r.get('round_name', '')} — {r.get('side', '')} {r.get('speaker', '')}", level=2)
             doc.add_paragraph(r.get("content_summary", ""))
             for c in r.get("claims", []):
-                rebut = f" ↳ 反驳 {c.get('rebuts_claim_id')}" if c.get("rebuts_claim_id") else ""
-                status = " ✅已回应" if c.get("responded") else " ⚠️未回应"
+                rebut = f" [反驳 {c.get('rebuts_claim_id')}]" if c.get("rebuts_claim_id") else ""
+                status = " [已回应]" if c.get("responded") else " [未回应]"
                 p = doc.add_paragraph(f"• {c.get('content', '')}{rebut}{status}")
                 if c.get("evidence"):
                     doc.add_paragraph(f"  证据：{c['evidence']}")
@@ -536,8 +676,8 @@ def build_export_report(debate_data: dict, messages: list[dict], transcript: str
             lines.append(f"### {r.get('round_name', '')} — {r.get('side', '')} {r.get('speaker', '')}")
             lines.append(f"> {r.get('content_summary', '')}")
             for c in r.get("claims", []):
-                rebut = f" ↳ 反驳 {c.get('rebuts_claim_id')}" if c.get("rebuts_claim_id") else ""
-                status = " ✅已回应" if c.get("responded") else " ⚠️未回应"
+                rebut = f" [反驳 {c.get('rebuts_claim_id')}]" if c.get("rebuts_claim_id") else ""
+                status = " [已回应]" if c.get("responded") else " [未回应]"
                 lines.append(f"- **{c.get('content', '')}**{rebut}{status}")
                 if c.get("evidence"):
                     lines.append(f"  证据：{c['evidence']}")
@@ -829,28 +969,49 @@ if not st.session_state.processing_done:
         )
 
     if analyze_clicked and video_url.strip():
-        st.session_state.current_video_url = video_url.strip()
+        st.session_state.pending_video_url = video_url.strip()
+        st.session_state.video_duration = _get_video_duration(video_url.strip())
+        st.session_state.show_analysis_modal = True
+        st.session_state.pending_analysis_url = True
+        st.rerun()
+
+    if st.session_state.get("pending_analysis_url"):
+        st.session_state.pending_analysis_url = False
+        video_url = st.session_state.pop("pending_video_url", "")
+        st.session_state.current_video_url = video_url
         st.session_state.processing_done = False
         st.session_state.debate_data = None
         st.session_state.messages = []
         st.session_state.video_error = ""
         st.session_state.video_title = ""
 
-        with st.spinner("🎬 正在获取视频字幕..."):
-            result = fetch_transcript(video_url.strip())
+        with st.status("🔍 正在分析辩论...", expanded=True) as status:
+            st.write("🎬 获取视频字幕...")
+            result = fetch_transcript(video_url)
 
-        if result.error:
-            st.error(f"⚠️ 字幕获取失败：{result.error}")
-            st.info("💡 该视频可能未开启 AI 字幕。B站视频需开启 AI 字幕才能自动提取文字稿。")
-        else:
-            with st.spinner("🧹 正在清洗字幕（加标点、标发言人、去噪声）..."):
+            if result.error:
+                status.update(label="❌ 字幕获取失败", state="error")
+                st.session_state.show_analysis_modal = False
+                st.error(f"⚠️ 字幕获取失败：{result.error}")
+                st.info("💡 该视频可能未开启 AI 字幕。B站视频需开启 AI 字幕才能自动提取文字稿。")
+            else:
+                st.write("🧹 清洗字幕（加标点、标发言人、去噪声）...")
                 cleaned_text = clean_transcript(
-                    result.full_text,
-                    API_KEY,
-                    model,
-                    base_url=BASE_URL,
+                    result.full_text, API_KEY, model, base_url=BASE_URL,
                 )
-            with st.spinner("🧠 正在分析论证结构..."):
+                st.write("🧠 分析论证结构...")
+                word_count = len(result.full_text)
+                duration = int(getattr(result, "duration", 0) or 0)
+                if 0 < duration <= 18000:
+                    video_min = duration // 60
+                    time_saved = max(1, video_min - 3)
+                else:
+                    time_saved = max(1, round(word_count / 400) - 3)
+                st.session_state.time_saved = time_saved
+                st.session_state.word_count = word_count
+                st.session_state.video_duration = duration
+                st.session_state.show_analysis_modal = False
+                status.update(label=f"✅ 分析完成！为你节省了约 {time_saved} 分钟", state="complete")
                 process_transcript(cleaned_text, result.title)
 
     # --- Built-in video gallery ---
@@ -904,20 +1065,45 @@ if not st.session_state.processing_done:
                 )
 
             if st.button(f"分析这场辩论", key=f"builtin_{i}", use_container_width=True):
-                st.session_state.current_video_url = vid["url"]
-                st.session_state.processing_done = False
-                st.session_state.debate_data = None
-                st.session_state.messages = []
-                st.session_state.video_error = ""
-                st.session_state.video_title = vid["title"]
+                st.session_state.pending_builtin_idx = i
+                st.session_state.video_duration = _get_video_duration(vid["url"])
+                st.session_state.show_analysis_modal = True
+                st.session_state.pending_analysis_builtin = True
+                st.rerun()
 
-                with st.spinner("📂 正在加载逐字稿..."):
-                    try:
-                        with open(vid["transcript_file"], "r") as f:
-                            transcript_text = f.read()
-                        process_transcript(transcript_text, vid["title"])
-                    except FileNotFoundError:
-                        st.error(f"逐字稿文件未找到：{vid['transcript_file']}")
+    # Handle pending built-in analysis (outside the loop, after all buttons)
+    if st.session_state.get("pending_analysis_builtin"):
+        st.session_state.pending_analysis_builtin = False
+        idx = st.session_state.pop("pending_builtin_idx", 0)
+        vid = BUILT_IN_VIDEOS[idx]
+        st.session_state.current_video_url = vid["url"]
+        st.session_state.processing_done = False
+        st.session_state.debate_data = None
+        st.session_state.messages = []
+        st.session_state.video_error = ""
+        st.session_state.video_title = vid["title"]
+
+        with st.status("📂 正在分析...", expanded=True) as status:
+            st.write("📂 加载逐字稿...")
+            try:
+                with open(vid["transcript_file"], "r") as f:
+                    transcript_text = f.read()
+                st.write("🧠 分析论证结构...")
+                word_count = len(transcript_text)
+                video_dur = int(st.session_state.get("video_duration", 0) or 0)
+                if 0 < video_dur <= 18000:
+                    time_saved = max(1, (video_dur // 60) - 3)
+                else:
+                    time_saved = max(1, round(word_count / 400) - 3)
+                st.session_state.time_saved = time_saved
+                st.session_state.word_count = word_count
+                st.session_state.show_analysis_modal = False
+                status.update(label=f"✅ 完成！节省了约 {time_saved} 分钟", state="complete")
+                process_transcript(transcript_text, vid["title"])
+            except FileNotFoundError:
+                status.update(label="❌ 文件未找到", state="error")
+                st.session_state.show_analysis_modal = False
+                st.error(f"逐字稿文件未找到：{vid['transcript_file']}")
 
 
 # ── Results ─────────────────────────────────────────────────────────────
@@ -939,6 +1125,19 @@ if st.session_state.processing_done and st.session_state.debate_data:
             for key in defaults:
                 st.session_state[key] = defaults[key]
             st.rerun()
+
+    # Time-saved badge
+    if st.session_state.get("time_saved"):
+        video_dur = int(st.session_state.get("video_duration", 0) or 0)
+        if 0 < video_dur <= 18000:
+            video_min = video_dur // 60
+            source_hint = f"原视频 {video_min} 分钟"
+        else:
+            source_hint = f"原文 {st.session_state.get('word_count', 0):,} 字"
+        st.success(
+            f"⚡ 分析完成！{source_hint}，"
+            f"AI 帮你 3 分钟看懂论证骨架，节省了约 **{st.session_state.time_saved} 分钟**。"
+        )
 
     # --- Function tabs ---
     tab_transcript, tab_mindmap, tab_qa = st.tabs([
@@ -967,11 +1166,10 @@ if st.session_state.processing_done and st.session_state.debate_data:
         with col_m1:
             st.subheader("论证结构思维导图")
         with col_m2:
-            report_md = build_export_report(debate_data, st.session_state.messages, raw_text)
             # Word download
             report_docx = build_export_docx(debate_data, st.session_state.messages, raw_text)
             st.download_button(
-                "📥 下载报告（Word）",
+                "📥 下载详细报告（Word）",
                 data=report_docx,
                 file_name=f"辩论分析_{debate_data.get('topic', 'report')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -994,12 +1192,7 @@ if st.session_state.processing_done and st.session_state.debate_data:
                     except Exception as e:
                         st.error(f"加入知识库失败：{e}")
 
-        # View full report
-        with st.expander("📋 查看完整报告"):
-            st.markdown(report_md)
-
-        mermaid_code = build_mermaid_mindmap(debate_data)
-        st.markdown(mermaid_code)
+        _render_mermaid(build_mermaid_mindmap(debate_data), height=900)
 
         st.caption("💡 思维导图展示双方核心论点和交锋结构。切换至「深度追问」tab 可针对任意节点追问。")
 
@@ -1039,6 +1232,25 @@ if st.session_state.processing_done and st.session_state.debate_data:
                         status = " ✅已回应" if c.get("responded") else " ⚠️未回应"
                         st.markdown(f"- {c.get('content', '')}{rebuts}{status}")
                     st.markdown("---")
+
+        # --- Unresolved Issues ---
+        unresolved = debate_data.get("unresolved_issues", [])
+        if unresolved:
+            with st.expander("⚠️ 未解决的问题"):
+                for u in unresolved:
+                    st.markdown(
+                        f"**{u.get('issue', '')}** — 提出方：{u.get('raised_by', '')}"
+                    )
+
+        # --- Factual Claims ---
+        factual = debate_data.get("factual_claims", [])
+        if factual:
+            with st.expander("📊 事实性主张"):
+                for f in factual:
+                    evidence = " — 有证据" if f.get("has_evidence") else " — 无证据"
+                    st.markdown(f"- {f.get('claim', '')}（{f.get('speaker', '')}）{evidence}")
+                    if f.get("evidence_detail"):
+                        st.caption(f"  证据详情：{f['evidence_detail']}")
 
     # ── Tab 3: Deep Q&A ─────────────────────────────────────────────
     with tab_qa:
